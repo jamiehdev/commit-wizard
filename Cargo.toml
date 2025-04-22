@@ -1,0 +1,20 @@
+[package]
+name = "commit-wizard"
+version = "0.1.0"
+edition = "2024"
+description = "ai-powered conventional commit message generator"
+authors = ["jamiehdev"]
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+git2 = "0.18"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+dotenv = "0.15"
+encoding_rs = "0.8"
+encoding_rs_io = "0.1"
+regex = "1.10"
+lazy_static = "1.4"
