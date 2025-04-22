@@ -24,7 +24,7 @@ pub fn get_diff_info(
     verbose: bool
 ) -> Result<DiffInfo> {
     // open the repository
-    let repo = Repository::open(repo_path)
+    let repo = Repository::discover(repo_path)
         .context("failed to open git repository")?;
     
     // create diff options
