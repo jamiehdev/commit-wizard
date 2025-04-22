@@ -131,7 +131,7 @@ where:
 - scope: optional, can be anything specifying the section of the codebase
 - description: a short summary of the code changes, in present tense, not capitalised, and no period at the end
 - body: optional, providing additional contextual information about the changes
-- footer: optional, e.g., BREAKING CHANGE: description or Refs: #123
+- footer: optional, e.g., BREAKING CHANGE: description or references to issues (include only if relevant, e.g., Closes: #123 or Refs: #123)
 
 guidelines:
 1. use UK english spelling
