@@ -108,7 +108,7 @@ fn construct_prompt(diff_info: &DiffInfo) -> String {
         prompt.push_str(&format!("diff:\n{}\n\n", diff_content));
     }
     
-    prompt.push_str("\nplease generate a conventional commit message for these changes following the conventional commits specification (https://www.conventionalcommits.org/). the message should be in the format:\n\n<type>[optional scope]: <description>\n\n[optional body]\n\n[optional footer(s)]\n\nwhere type is one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.\n\nonly include the final commit message without any explanations or extra text.");
+    prompt.push_str("\nplease generate a conventional commit message for these changes following the conventional commits specification (https://www.conventionalcommits.org/). the message should be in the format:\n\n<type>[optional scope]: <description>\n\n[optional body]\n\n[optional footer(s)]\n\nwhere type is one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.\n\nimportant: do not use backticks, markdown formatting, or any special characters that might cause problems in shell commands. use plain text only.\n\nonly include the final commit message without any explanations or extra text.");
     
     prompt
 }
@@ -141,5 +141,7 @@ guidelines:
 5. no period (.) at the end of the description
 6. if there are breaking changes, use BREAKING CHANGE in the footer or add a ! after the type/scope
 7. include relevant scope if it helps clarify the affected code section
+8. do not use backticks (`) or any markdown formatting in the commit message
+9. use plain text only, as markdown is not properly supported in git commit -m commands
 
 only output the commit message itself without any explanations."#;
