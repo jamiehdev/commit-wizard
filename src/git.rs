@@ -104,13 +104,17 @@ pub fn get_diff_info(
         }
     }
     
-    // get the diff between the index and the working directory (unstaged changes)
-    if verbose {
-        println!("analysing unstaged changes (working directory vs index)...");
-    }
-    
-    if let Ok(diff) = repo.diff_index_to_workdir(None, Some(&mut diff_opts)) {
-        process_diff(&diff, &mut files, max_file_size, max_files, verbose)?;
+    // only check unstaged changes if no staged changes were found
+    if files.is_empty() {
+        if verbose {
+            println!("no staged changes found, checking unstaged changes (working directory vs index)...");
+        }
+        
+        if let Ok(diff) = repo.diff_index_to_workdir(None, Some(&mut diff_opts)) {
+            process_diff(&diff, &mut files, max_file_size, max_files, verbose)?;
+        }
+    } else if verbose {
+        println!("staged changes found, skipping unstaged changes...");
     }
     
     if files.is_empty() {
