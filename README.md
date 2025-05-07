@@ -85,13 +85,13 @@ cd commit-wizard
 2. set environment variables for the ai integration:
 ```
 export OPENROUTER_API_KEY=your-api-key
-export OPENROUTER_MODEL=microsoft/mai-ds-r1:free  # optional
+export OPENROUTER_MODEL=nvidia/llama-3.1-nemotron-ultra-253b-v1:free  # optional
 ```
 
 or create a `.env` file in the project directory:
 ```
 OPENROUTER_API_KEY=your-api-key
-OPENROUTER_MODEL=microsoft/mai-ds-r1:free
+OPENROUTER_MODEL=nvidia/llama-3.1-nemotron-ultra-253b-v1:free
 ```
 
 3. build the project:
@@ -154,3 +154,4 @@ commit-wizard --max-files 20
 ## license
 
 mit
+

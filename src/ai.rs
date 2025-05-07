@@ -39,7 +39,7 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo) -> Result<String
         .context("OPENROUTER_API_KEY environment variable is not set")?;
     
     let model = env::var("OPENROUTER_MODEL")
-        .unwrap_or_else(|_| "microsoft/mai-ds-r1:free".to_string());
+        .unwrap_or_else(|_| "nvidia/llama-3.1-nemotron-ultra-253b-v1:free".to_string());
     
     // construct the prompt for the ai
     let prompt = construct_prompt(diff_info);
