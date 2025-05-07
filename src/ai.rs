@@ -108,7 +108,7 @@ fn construct_prompt(diff_info: &DiffInfo) -> String {
         prompt.push_str(&format!("diff:\n{}\n\n", diff_content));
     }
     
-    prompt.push_str("\nplease generate a conventional commit message for these changes following the conventional commits specification (https://www.conventionalcommits.org/). the message should be in the format:\n\n<type>[optional scope]: <description>\n\n[optional body]\n\n[optional footer(s)]\n\nwhere type is one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.\n\nimportant: do not use backticks, markdown formatting, or any special characters that might cause problems in shell commands. use plain text only.\n\nonly include the final commit message without any explanations or extra text.");
+    prompt.push_str("\nplease generate a conventional commit message for these changes following the conventional commits specification (https://www.conventionalcommits.org/). the message should be in the format:\n\n<type>[optional scope]: <description>\n\n[optional body]\n\n[optional footer(s)]\n\nwhere type is one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.\n\nimportant: do not use backticks, markdown formatting, or any special characters that might cause problems in shell commands. use plain text only. do not add ticket references like 'refs: #123' or 'closes: #123' unless they are explicitly mentioned in the diff.\n\nonly include the final commit message without any explanations or extra text.");
     
     prompt
 }
@@ -131,7 +131,7 @@ where:
 - scope: optional, can be anything specifying the section of the codebase
 - description: a short summary of the code changes, in present tense, not capitalised, and no period at the end
 - body: optional, providing additional contextual information about the changes
-- footer: optional, e.g., BREAKING CHANGE: description or references to issues (include only if relevant, e.g., Closes: #123 or Refs: #123)
+- footer: optional for breaking changes only (e.g., BREAKING CHANGE: description). do not add ticket references like "closes: #123" or "refs: #123" unless they are explicitly mentioned in the diff
 
 guidelines:
 1. use UK english spelling
@@ -143,5 +143,6 @@ guidelines:
 7. include relevant scope if it helps clarify the affected code section
 8. do not use backticks (`) or any markdown formatting in the commit message
 9. use plain text only, as markdown is not properly supported in git commit -m commands
+10. do not add references to tickets (like 'refs: #123' or 'closes: #123') unless explicitly mentioned in the diff
 
 only output the commit message itself without any explanations."#;
