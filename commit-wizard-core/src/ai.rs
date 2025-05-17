@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
-use crate::git::DiffInfo;
+use crate::git::DiffInfo; // this will be local to commit-wizard-core
 
+// ... (rest of the content from src/ai.rs) ...
+// (Identical content as read previously)
 // structure for openrouter api request
 #[derive(Serialize)]
 struct OpenRouterRequest {
@@ -170,4 +172,4 @@ guidelines:
 10. do not add references to tickets (like 'refs: #123' or 'closes: #123') unless explicitly mentioned in the diff
 11. format all bullet points in the body with hyphens (-) at the start of each line and capitalise the first word (e.g., "- Clarify" not "- clarify")
 
-only output the commit message itself without any explanations."#;
+only output the commit message itself without any explanations."#; 
