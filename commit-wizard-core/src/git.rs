@@ -319,4 +319,4 @@ fn decode_line_content(content: &[u8]) -> String {
     } else {
         cow.to_string()
     }
-}
+} 

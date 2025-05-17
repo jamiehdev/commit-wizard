@@ -1,21 +1,52 @@
-# rust build artifacts
+# rust build artefacts
 /target/
-**/*.rs.bk
+*.rs.bk
 *.pdb
 
-# ide files
+# ide and os specific files
 .idea/
 .vscode/
 *.swp
 *.swo
 .DS_Store
+._*
+Thumbs.db
 
 # environment variables
 .env
+.env.*
 .env.local
 
-# logs
+# log files and reports
 *.log
+coverage/
+junit.xml
 
-# dependencies
-Cargo.lock
+# node.js / napi specific
+# ignore node_modules in any subdirectory
+**/node_modules/
+
+# ignore npm/yarn debug logs anywhere
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# generated files in the napi package directory
+# these are built by `napi build` and included in the npm package.
+# it's good practice not to commit these to git.
+/commit-wizard-napi/index.js
+/commit-wizard-napi/index.d.ts
+/commit-wizard-napi/*.node
+
+# miscellaneous build artefacts or temporary files
+*.bak
+*.tmp
+
+# cargo.lock is typically committed for workspace projects building binaries
+# to ensure reproducible builds.
+# if you have a strong reason not to commit it for this project, uncomment the line below.
+# Cargo.lock
+
+# local test repositories
+/napi_test_repo/
+/test-repo/

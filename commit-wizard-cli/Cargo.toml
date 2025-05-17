@@ -1,0 +1,17 @@
+[package]
+name = "commit-wizard-cli"
+version = "0.2.0" # Or align with overall project version
+edition = "2021"
+authors = ["jamiehdev"]
+description = "Standalone CLI for AI-powered conventional commit message generation"
+
+[dependencies]
+commit-wizard-core = { path = "../commit-wizard-core" }
+tokio = { version = "1.35", features = ["full"] } # For #[tokio::main]
+anyhow = "1.0" # For Result type in main
+clap = { version = "4.4", features = ["derive"] } # For CoreCliArgs::parse()
+# dotenv and style are used via commit_wizard_core re-exports in main.rs
+
+[[bin]]
+name = "commit-wizard"
+path = "src/main.rs" 
