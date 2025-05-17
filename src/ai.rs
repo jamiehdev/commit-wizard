@@ -154,7 +154,7 @@ where:
 - type: must be one of: feat (new feature), fix (bug fix), docs (documentation), style (formatting), refactor (code restructuring), perf (performance), test (tests), build (build system), ci (CI), chore (maintenance), revert (revert previous commit)
 - scope: optional, can be anything specifying the section of the codebase
 - description: a short summary of the code changes, in present tense, not capitalised, and no period at the end
-- body: optional, providing additional contextual information about the changes
+- body: optional, providing additional contextual information about the changes. always use hyphens (-) to format bullet points in the body, with each point on a new line. capitalise the first word of each bullet point
 - footer: optional for breaking changes only (e.g., BREAKING CHANGE: description). do not add ticket references like "closes: #123" or "refs: #123" unless they are explicitly mentioned in the diff
 
 guidelines:
@@ -168,5 +168,6 @@ guidelines:
 8. do not use backticks (`) or any markdown formatting in the commit message
 9. use plain text only, as markdown is not properly supported in git commit -m commands
 10. do not add references to tickets (like 'refs: #123' or 'closes: #123') unless explicitly mentioned in the diff
+11. format all bullet points in the body with hyphens (-) at the start of each line and capitalise the first word (e.g., "- Clarify" not "- clarify")
 
 only output the commit message itself without any explanations."#;
