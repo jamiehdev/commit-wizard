@@ -144,6 +144,91 @@ pub fn get_diff_info(
     Ok(DiffInfo { files, summary })
 }
 
+/// check if there are any staged changes in the repository
+pub fn has_staged_changes(repo_path: &str) -> Result<bool> {
+    // open the repository
+    let repo = Repository::discover(repo_path)
+        .context("failed to open git repository")?;
+    
+    // check if repository has any commits
+    let has_head = match repo.head() {
+        Ok(_) => true,
+        Err(_) => false,
+    };
+    
+    // if the repository has no commits yet, check if there are any staged files
+    if !has_head {
+        if let Ok(index) = repo.index() {
+            return Ok(!index.is_empty());
+        }
+        return Ok(false);
+    }
+    
+    // check for staged changes by comparing HEAD to index
+    if let Ok(head) = repo.head() {
+        if let Ok(tree) = head.peel_to_tree() {
+            let mut diff_opts = DiffOptions::new();
+            diff_opts.show_binary(false);
+            
+            if let Ok(diff) = repo.diff_tree_to_index(Some(&tree), None, Some(&mut diff_opts)) {
+                // if diff has any deltas, there are staged changes
+                return Ok(diff.deltas().count() > 0);
+            }
+        }
+    }
+    
+    Ok(false)
+}
+
+/// get a list of staged files for display
+pub fn get_staged_files(repo_path: &str) -> Result<Vec<String>> {
+    // open the repository
+    let repo = Repository::discover(repo_path)
+        .context("failed to open git repository")?;
+    
+    let mut staged_files = Vec::new();
+    
+    // check if repository has any commits
+    let has_head = match repo.head() {
+        Ok(_) => true,
+        Err(_) => false,
+    };
+    
+    // if the repository has no commits yet, get all staged files
+    if !has_head {
+        if let Ok(index) = repo.index() {
+            for entry in index.iter() {
+                if let Ok(path) = std::str::from_utf8(&entry.path) {
+                    staged_files.push(path.to_string());
+                }
+            }
+        }
+        return Ok(staged_files);
+    }
+    
+    // check for staged changes by comparing HEAD to index
+    if let Ok(head) = repo.head() {
+        if let Ok(tree) = head.peel_to_tree() {
+            let mut diff_opts = DiffOptions::new();
+            diff_opts.show_binary(false);
+            
+            if let Ok(diff) = repo.diff_tree_to_index(Some(&tree), None, Some(&mut diff_opts)) {
+                diff.foreach(
+                    &mut |delta, _| {
+                        if let Some(path) = delta.new_file().path() {
+                            staged_files.push(path.to_string_lossy().to_string());
+                        }
+                        true
+                    },
+                    None, None, None
+                )?;
+            }
+        }
+    }
+    
+    Ok(staged_files)
+}
+
 /// process a diff to extract file information
 fn process_diff(
     diff: &git2::Diff,
