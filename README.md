@@ -19,6 +19,7 @@ commit wizard analyses your git diff and uses ai to generate a well-formatted [c
 - ✏️ edit generated commit messages before committing
 - 🚀 automatic commit execution with --yes flag
 - 🧩 modular architecture with core library, cli, and node.js components
+- 🌐 cross-platform support for linux, macos, and windows
 
 ## installation via npm/yarn (recommended)
 
@@ -105,6 +106,19 @@ options:
   -h, --help                   print help
   -V, --version                print version
 ```
+
+### platform support
+
+commit wizard is available for the following platforms:
+
+| platform | architecture | npm package specifier |
+|----------|--------------|----------------------|
+| linux    | x64          | @jamiehdev/commit-wizard-linux-x64-gnu |
+| macos    | x64          | @jamiehdev/commit-wizard-darwin-x64 |
+| macos    | arm64 (m1/m2) | @jamiehdev/commit-wizard-darwin-arm64 |
+| windows  | x64          | @jamiehdev/commit-wizard-win32-x64-msvc |
+
+these packages are automatically installed as optional dependencies based on your platform.
 
 ### examples (npm/yarn installed)
 
