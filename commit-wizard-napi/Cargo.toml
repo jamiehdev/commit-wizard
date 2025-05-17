@@ -1,0 +1,30 @@
+[package]
+edition = "2021"
+name = "commit-wizard-napi"
+version = "0.2.2"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Napi-rs dependencies
+napi = { version = "2.12.2", default-features = false, features = ["napi4", "tokio_rt"] }
+napi-derive = "2.12.2"
+
+# Core library
+commit-wizard-core = { path = "../commit-wizard-core" }
+
+# Tokio is still needed here if the napi functions are async and use tokio directly
+# (or if commit_wizard_core re-exports what's needed and napi uses that).
+# For now, let's assume commit-wizard-core handles its own tokio runtime for `execute_commit_wizard_flow`.
+# The napi tokio_rt feature should bridge the runtimes if needed.
+# We might still need tokio here if we directly spawn tokio tasks in lib.rs for napi.
+# Let's keep tokio for now for the `#[napi]` async functions.
+tokio = { version = "1.35", features = ["full"] }
+anyhow = "1.0" # For Result error handling in lib.rs
+
+# Removed: clap, git2, reqwest, serde, serde_json, dotenv, encoding_rs, encoding_rs_io, regex, lazy_static, indicatif, dialoguer, console
+# These are now in commit-wizard-core
+
+[build-dependencies]
+napi-build = "2.0.1"

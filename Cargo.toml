@@ -1,23 +1,15 @@
-[package]
-name = "commit-wizard"
-version = "0.2.0"
-edition = "2024"
-description = "ai-powered conventional commit message generator"
-authors = ["jamiehdev"]
+[workspace]
+members = [
+    "commit-wizard-core",
+    "commit-wizard-cli",
+    "commit-wizard-napi",
+]
+resolver = "2" # Good practice for modern workspaces
 
-[dependencies]
-clap = { version = "4.4", features = ["derive"] }
-git2 = "0.18"
-reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1.35", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-anyhow = "1.0"
-dotenv = "0.15"
-encoding_rs = "0.8"
-encoding_rs_io = "0.1"
-regex = "1.10"
-lazy_static = "1.4"
-indicatif = "0.17"
-dialoguer = "0.11"
-console = "0.15"
+# Optional: Define shared profile settings for all workspace members
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true # "symbols" is also an option, true is more aggressive

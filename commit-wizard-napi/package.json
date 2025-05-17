@@ -1,0 +1,81 @@
+{
+  "name": "@jamiehdev/commit-wizard",
+  "version": "0.2.2",
+  "description": "ai-powered conventional commit message generator. Analyses your git changes and suggests commit messages.",
+  "keywords": [
+    "git",
+    "commit",
+    "conventional-commits",
+    "ai",
+    "cli",
+    "developer-tools",
+    "napi-rs",
+    "rust",
+    "commit-message",
+    "automation"
+  ],
+  "author": "jamie (jamiehdev)",
+  "license": "MIT",
+  "homepage": "https://github.com/jamiehdev/commit-wizard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jamiehdev/commit-wizard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jamiehdev/commit-wizard/issues"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "commit-wizard": "./bin.js",
+    "cw": "./bin.js"
+  },
+  "napi": {
+    "name": "commit-wizard-napi",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "x86_64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "ava": "^6.0.1"
+  },
+  "ava": {
+    "timeout": "3m"
+  },
+  "engines": {
+    "node": ">= 16"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build:rust": "cargo build --manifest-path Cargo.toml --release --target-dir target",
+    "stage:artifact": "node ./scripts/stage-artifact.mjs release",
+    "build:napi": "napi build --platform --release --cargo-flags=\"--target-dir target\"",
+    "clean:stage": "node ./scripts/clean-artifact.mjs",
+    "build": "npm run build:rust && npm run stage:artifact && npm run build:napi && npm run clean:stage",
+    "build:debug:rust": "cargo build --manifest-path Cargo.toml --target-dir target",
+    "stage:artifact:debug": "node ./scripts/stage-artifact.mjs debug",
+    "build:napi:debug": "napi build --platform --cargo-flags=\"--target-dir target\"",
+    "build:debug": "npm run build:debug:rust && npm run stage:artifact:debug && npm run build:napi:debug && npm run clean:stage",
+    "build-all": "cd .. && cargo build --release && cd commit-wizard-napi && npm run build",
+    "build:universal": "napi build --platform --release --target x86_64-apple-darwin x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-unknown-linux-gnu",
+    "prepare_for_prepublish": "node ./scripts/prepare-host-for-prepublish.mjs",
+    "prepublishOnly": "npm run prepare_for_prepublish && napi prepublish -t npm",
+    "test": "ava",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "optionalDependencies": {
+    "@jamiehdev/commit-wizard-linux-x64-gnu": "0.2.2",
+    "@jamiehdev/commit-wizard-darwin-x64": "0.2.2",
+    "@jamiehdev/commit-wizard-darwin-arm64": "0.2.2",
+    "@jamiehdev/commit-wizard-win32-x64-msvc": "0.2.2"
+  },
+  "dependencies": {}
+}
