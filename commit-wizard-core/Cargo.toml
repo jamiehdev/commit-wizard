@@ -1,0 +1,28 @@
+[package]
+name = "commit-wizard-core"
+version = "0.1.0" # Initial version for the core library
+edition = "2021" # Let's stick to 2021 for broader compatibility within the workspace
+authors = ["jamiehdev"]
+description = "Core logic for AI-powered conventional commit message generation"
+
+[dependencies]
+# Dependencies needed for ai.rs, git.rs, utils.rs, and core logic
+git2 = "0.18"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+dotenv = "0.15" # For OPENROUTER_API_KEY, OPENROUTER_MODEL
+encoding_rs = "0.8"
+encoding_rs_io = "0.1"
+regex = "1.10"
+lazy_static = "1.4"
+indicatif = "0.17"
+dialoguer = "0.11" # For interactive prompts, if core lib handles them
+console = "0.15"   # For styled output, if core lib handles them
+clap = { version = "4.4", features = ["derive"] } # If core lib parses args or uses the struct 
+edit = "0.1.4" # for editing commit messages in an external editor
+crossterm = "0.27" # for terminal mode control
+atty = "0.2" # for terminal detection
+which = "4"
