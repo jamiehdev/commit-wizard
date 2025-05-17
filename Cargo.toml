@@ -1,6 +1,6 @@
 [package]
 name = "commit-wizard"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "ai-powered conventional commit message generator"
 authors = ["jamiehdev"]
@@ -18,3 +18,6 @@ encoding_rs = "0.8"
 encoding_rs_io = "0.1"
 regex = "1.10"
 lazy_static = "1.4"
+indicatif = "0.17"
+dialoguer = "0.11"
+console = "0.15"
