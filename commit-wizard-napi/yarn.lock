@@ -21,35 +21,13 @@
   dependencies:
     minipass "^7.0.4"
 
-"@jamiehdev/commit-wizard-darwin-arm64@0.0.1":
+"@jamiehdev/commit-wizard-darwin-arm64@0.2.2":
 
-"@jamiehdev/commit-wizard-darwin-x64@0.0.1":
+"@jamiehdev/commit-wizard-darwin-x64@0.2.2":
 
-"@jamiehdev/commit-wizard-linux-arm-gnueabihf@0.0.1":
+"@jamiehdev/commit-wizard-linux-x64-gnu@0.2.2":
 
-"@jamiehdev/commit-wizard-linux-arm64-gnu@0.0.1":
-
-"@jamiehdev/commit-wizard-linux-arm64-musl@0.0.1":
-
-"@jamiehdev/commit-wizard-linux-x64-gnu@0.0.1":
-
-"@jamiehdev/commit-wizard-linux-x64-musl@0.0.1":
-
-"@jamiehdev/commit-wizard-win32-x64-msvc@0.0.1":
-
-"@jamiehdev/commit-wizard@^0.0.1":
-  version "0.0.1"
-  resolved "https://registry.npmjs.org/@jamiehdev/commit-wizard/-/commit-wizard-0.0.1.tgz"
-  integrity sha512-Bteo86fN17IwKUELxSuMPKzvfINyAYRIcl3VwUAd5HlfTuabNm6qeFX6hSD4RzcjiLWkLdbBOVtbEilkz6wQwA==
-  optionalDependencies:
-    "@jamiehdev/commit-wizard-darwin-arm64" "0.0.1"
-    "@jamiehdev/commit-wizard-darwin-x64" "0.0.1"
-    "@jamiehdev/commit-wizard-linux-arm-gnueabihf" "0.0.1"
-    "@jamiehdev/commit-wizard-linux-arm64-gnu" "0.0.1"
-    "@jamiehdev/commit-wizard-linux-arm64-musl" "0.0.1"
-    "@jamiehdev/commit-wizard-linux-x64-gnu" "0.0.1"
-    "@jamiehdev/commit-wizard-linux-x64-musl" "0.0.1"
-    "@jamiehdev/commit-wizard-win32-x64-msvc" "0.0.1"
+"@jamiehdev/commit-wizard-win32-x64-msvc@0.2.2":
 
 "@mapbox/node-pre-gyp@^2.0.0":
   version "2.0.0"
