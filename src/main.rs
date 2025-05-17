@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Confirm};
+use dialoguer::{theme::ColorfulTheme, Select, Editor};
 use dotenv::dotenv;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
@@ -32,6 +32,10 @@ struct Cli {
     /// show detailed diff information
     #[arg(short, long)]
     verbose: bool,
+    
+    /// automatically run the commit command when confirmed
+    #[arg(short = 'y', long)]
+    yes: bool,
 }
 
 #[tokio::main]
@@ -56,14 +60,37 @@ async fn main() -> Result<()> {
     // get repository path (default to current directory)
     let repo_path = cli.path.unwrap_or_else(|| ".".to_string());
     
+    // check if there are staged changes
+    match git::has_staged_changes(&repo_path) {
+        Ok(has_staged) => {
+            if has_staged {
+                // display staged files
+                if let Ok(files) = git::get_staged_files(&repo_path) {
+                    println!("{}\n", style("staged files:").cyan().bold());
+                    for file in files {
+                        println!("{}", style(format!("  - {}", file)).green());
+                    }
+                    println!();
+                }
+            } else {
+                println!("{}\n", style("⚠️  no staged changes found, will analyse unstaged changes instead").yellow().bold());
+            }
+        },
+        Err(e) => {
+            println!("{} {}", style("❌ error checking staged changes:").red().bold(), style(e).red());
+        }
+    }
+    
     // analyse git diff and generate commit message
-    match generate_commit(&repo_path, cli.max_size, cli.max_files, cli.verbose).await {
+    match generate_commit(&repo_path, cli.max_size, cli.max_files, cli.verbose, cli.yes).await {
         Ok(commit_msg) => {
-            // display the command to use for committing
-            println!("\n{}", style("✨ ready to commit! ✨").green().bold());
-            println!("\n{}", style("run this command:").cyan());
-            let git_command = format!("git commit -m \"{}\"", commit_msg.replace("\"", "\\\""));
-            println!("{}\n", style(git_command).yellow().bold());
+            // if auto commit is not enabled, display the command to use for committing
+            if !cli.yes {
+                println!("\n{}", style("✨ ready to commit! ✨").green().bold());
+                println!("\n{}", style("run this command:").cyan());
+                let git_command = format!("git commit -m \"{}\"", commit_msg.replace("\"", "\\\""));
+                println!("{}\n", style(git_command).yellow().bold());
+            }
         }
         Err(e) => {
             println!("{} {}", style("❌ error:").red().bold(), style(e).red());
@@ -73,7 +100,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn generate_commit(repo_path: &str, max_size: usize, max_files: usize, verbose: bool) -> Result<String> {
+async fn generate_commit(repo_path: &str, max_size: usize, max_files: usize, verbose: bool, auto_commit: bool) -> Result<String> {
     // create a spinner for git diff analysis
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -117,17 +144,143 @@ async fn generate_commit(repo_path: &str, max_size: usize, max_files: usize, ver
     println!("{}", style(&commit_message).yellow());
     println!();
     
-    let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt("use this commit message?")
-        .default(true)
-        .show_default(true)
-        .wait_for_newline(true)
+    // provide instructions about using ctrl+c to exit
+    println!("{}\n", style("press ctrl+c at any time to exit").dim());
+    
+    let options = &["yes, commit this message", "edit this message", "no, regenerate message"];
+    
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("what would you like to do?")
+        .default(0)
+        .items(options)
         .interact()?;
     
-    if !confirmation {
-        // if user doesn't like the message, try again or exit
-        println!("\n{}", style("regenerating...").cyan());
-        return Box::pin(generate_commit(repo_path, max_size, max_files, verbose)).await;
+    let mut commit_message = commit_message;
+    
+    match selection {
+        0 => {
+            // user chose "yes" - continue with commit
+            println!("{}", style("proceeding with commit...").green());
+        },
+        1 => {
+            // user chose "edit" - allow them to edit the message
+            println!("{}", style("opening editor for commit message...").cyan());
+            
+            // create a temporary file with the commit message
+            use std::fs;
+            use std::io::Write;
+            use std::path::PathBuf;
+            use std::process::Command;
+            
+            let temp_dir = env::temp_dir();
+            let temp_file_path = temp_dir.join("commit_message.txt");
+            
+            // write the commit message to the temp file
+            let mut file = fs::File::create(&temp_file_path)?;
+            write!(file, "{}", commit_message)?;
+            file.flush()?;
+            
+            // try to find a suitable editor
+            let editors = ["nano", "vim", "vi", "emacs", "gedit", "notepad"];
+            let editor_env = env::var("EDITOR").unwrap_or_default();
+            
+            let editor_cmd = if !editor_env.is_empty() {
+                editor_env
+            } else {
+                // find the first available editor
+                let mut found_editor = String::from("nano"); // default fallback
+                for editor in editors.iter() {
+                    let which_result = Command::new("which")
+                        .arg(editor)
+                        .output();
+                    
+                    if let Ok(output) = which_result {
+                        if output.status.success() {
+                            found_editor = editor.to_string();
+                            break;
+                        }
+                    }
+                }
+                found_editor
+            };
+            
+            println!("{}", style(format!("using {} editor...", editor_cmd)).dim());
+            
+            // open the editor
+            let status = Command::new(&editor_cmd)
+                .arg(temp_file_path.to_str().unwrap())
+                .status();
+                
+            match status {
+                Ok(exit_status) => {
+                    if exit_status.success() {
+                        // read the edited content
+                        match fs::read_to_string(&temp_file_path) {
+                            Ok(edited_content) => {
+                                commit_message = edited_content;
+                                println!("{}", style("commit message updated").green());
+                            },
+                            Err(e) => {
+                                println!("{} {}", style("error reading edited message:").red(), e);
+                                println!("{}", style("using original message").yellow());
+                            }
+                        }
+                    } else {
+                        println!("{}", style("edit cancelled, using original message").yellow());
+                    }
+                },
+                Err(e) => {
+                    println!("{} {}", style("error launching editor:").red(), e);
+                    println!("{}", style("using original message").yellow());
+                }
+            }
+            
+            // clean up the temp file
+            let _ = fs::remove_file(temp_file_path);
+        },
+        2 => {
+            // user chose "no" - regenerate the message
+            println!("\n{}", style("regenerating...").cyan());
+            return Box::pin(generate_commit(repo_path, max_size, max_files, verbose, auto_commit)).await;
+        },
+        _ => unreachable!(), // this should never happen with select
+    }
+    
+    // if auto_commit is enabled, execute the git commit command directly
+    if auto_commit {
+        println!("{}", style("executing commit command...").cyan());
+        
+        use std::process::Command;
+        
+        // ensure we're in the right directory
+        let repo_dir = if repo_path == "." {
+            env::current_dir()?
+        } else {
+            std::path::PathBuf::from(&repo_path)
+        };
+        
+        // execute the git commit command
+        let output = Command::new("git")
+            .current_dir(repo_dir)
+            .args(&["commit", "-m", &commit_message])
+            .output()
+            .context("failed to execute git commit command")?;
+        
+        if output.status.success() {
+            println!("{}", style("\n✅ commit successful!").green().bold());
+            if let Ok(stdout) = String::from_utf8(output.stdout) {
+                if !stdout.trim().is_empty() {
+                    println!("{}", stdout);
+                }
+            }
+        } else {
+            println!("{}", style("\n❌ commit failed:").red().bold());
+            if let Ok(stderr) = String::from_utf8(output.stderr) {
+                if !stderr.trim().is_empty() {
+                    println!("{}", stderr);
+                }
+            }
+        }
     }
     
     Ok(commit_message)
