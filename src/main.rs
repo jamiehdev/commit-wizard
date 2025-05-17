@@ -217,7 +217,8 @@ async fn generate_commit(repo_path: &str, max_size: usize, max_files: usize, ver
                         // read the edited content
                         match fs::read_to_string(&temp_file_path) {
                             Ok(edited_content) => {
-                                commit_message = edited_content;
+                                // trim any trailing newlines that might have been added by the editor
+                                commit_message = edited_content.trim_end().to_string();
                                 println!("{}", style("commit message updated").green());
                             },
                             Err(e) => {
