@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::time::Duration;
 use crate::git::DiffInfo;
 
 // structure for openrouter api request
@@ -44,6 +46,21 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo) -> Result<String
     // construct the prompt for the ai
     let prompt = construct_prompt(diff_info);
     
+    // create a new progress bar for the API call
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&[
+                "🧙 ⠋", "🧙 ⠙", "🧙 ⠹",
+                "🧙 ⠸", "🧙 ⠼", "🧙 ⠴",
+                "🧙 ⠦", "🧙 ⠧", "🧙 ⠇",
+                "🧙 ⠏"
+            ])
+            .template("{spinner} generating...")
+            .unwrap()
+    );
+    spinner.enable_steady_tick(Duration::from_millis(120));
+    
     // prepare request to openrouter api
     let client = reqwest::Client::new();
     let request = OpenRouterRequest {
@@ -60,27 +77,34 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo) -> Result<String
         ],
     };
     
-    // send request to openrouter api
-    let response = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request)
-        .send()
-        .await
-        .context("failed to send request to openrouter api")?;
+    // send request to openrouter api in a wrapped block to ensure spinner is cleaned up
+    let result = async {
+        let response = client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .context("failed to send request to openrouter api")?;
+        
+        // parse response
+        let response_body = response
+            .json::<OpenRouterResponse>()
+            .await
+            .context("failed to parse openrouter api response")?;
+        
+        // extract and return the generated commit message
+        match response_body.choices.first() {
+            Some(choice) => Ok(choice.message.content.trim().to_string()),
+            None => Err(anyhow::anyhow!("no response from openrouter api")),
+        }
+    }.await;
     
-    // parse response
-    let response_body = response
-        .json::<OpenRouterResponse>()
-        .await
-        .context("failed to parse openrouter api response")?;
+    // stop and clear the spinner
+    spinner.finish_and_clear();
     
-    // extract and return the generated commit message
-    match response_body.choices.first() {
-        Some(choice) => Ok(choice.message.content.trim().to_string()),
-        None => Err(anyhow::anyhow!("no response from openrouter api")),
-    }
+    result
 }
 
 /// construct a prompt for the ai model based on the diff information
