@@ -14,6 +14,9 @@ commit wizard analyses your git diff and uses ai to generate a well-formatted [c
 - 🥷 ignores large files, minified files, and binary files
 - 🔄 works with any git repository
 - 💻 simple cli interface
+- 📋 detects and displays staged changes
+- ✏️ edit generated commit messages before committing
+- 🚀 automatic commit execution with --yes flag
 
 ## installation
 
@@ -120,6 +123,7 @@ options:
   -m, --max-size <MAX_SIZE>    maximum file size in KB to analyse [default: 100]
   -f, --max-files <MAX_FILES>  maximum number of files to analyse [default: 10]
   -v, --verbose                show detailed diff information
+  -y, --yes                    automatically run the commit command when confirmed
   -h, --help                   print help
   -V, --version                print version
 ```
@@ -141,15 +145,20 @@ commit-wizard --max-size 500
 
 # analyse more files (up to 20)
 commit-wizard --max-files 20
+
+# automatically execute the commit command after confirmation
+commit-wizard --yes
 ```
 
 ## how it works
 
-1. commit wizard analyses your git diff to understand the changes
-2. it filters out binary files, minified files, and large files
-3. it sends the relevant changes to the ai model
-4. the ai generates a conventional commit message based on your changes
-5. the tool presents the commit message ready to use
+1. commit wizard checks for staged changes and displays them if found
+2. it analyses your git diff to understand the changes
+3. it filters out binary files, minified files, and large files
+4. it sends the relevant changes to the ai model
+5. the ai generates a conventional commit message based on your changes
+6. you can accept, edit, or regenerate the suggested commit message
+7. with the --yes flag, it can automatically execute the git commit command
 
 ## license
 
