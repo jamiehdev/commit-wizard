@@ -1,0 +1,65 @@
+{
+  "name": "@jamiehdev/commit-wizard",
+  "version": "0.0.1",
+  "description": "ai-powered conventional commit message generator. Analyses your git changes and suggests commit messages.",
+  "keywords": [
+    "git",
+    "commit",
+    "conventional-commits",
+    "ai",
+    "cli",
+    "developer-tools",
+    "napi-rs",
+    "rust",
+    "commit-message",
+    "automation"
+  ],
+  "author": "jamie (jamiehdev)",
+  "license": "MIT",
+  "homepage": "https://github.com/jamiehdev/commit-wizard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jamiehdev/commit-wizard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jamiehdev/commit-wizard/issues"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "commit-wizard": "./bin.js",
+    "cw": "./bin.js" 
+  },
+  "napi": {
+    "name": "commit-wizard-napi",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "armv7-unknown-linux-gnueabihf",
+        "x86_64-unknown-linux-musl"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "ava": "^6.0.1"
+  },
+  "ava": {
+    "timeout": "3m"
+  },
+  "engines": {
+    "node": ">= 16"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "CARGO_TARGET_DIR=../../target napi build --platform --release",
+    "build:debug": "CARGO_TARGET_DIR=../../target napi build --platform",
+    "build-all": "cd .. && cargo build --release && cd commit-wizard-napi && npm run build",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "ava",
+    "universal": "napi universal",
+    "version": "napi version"
+  }
+}

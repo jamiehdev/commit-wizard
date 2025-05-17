@@ -104,4 +104,4 @@ pub fn identify_scope(file_paths: &[String]) -> Option<String> {
 #[allow(dead_code)]
 pub fn format_scope(scope: &str) -> String {
     scope.to_lowercase()
-}
+} 
