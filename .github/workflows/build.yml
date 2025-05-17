@@ -8,6 +8,9 @@ on:
     tags:
       - v*
   pull_request:
+    types:
+      - opened
+      - reopened
     branches:
       - main
 
@@ -46,6 +49,7 @@ jobs:
           targets: ${{ matrix.settings.target }}
       
       - name: build
+        shell: bash
         run: |
           cd commit-wizard-napi
           npm install
