@@ -37,6 +37,9 @@ junit.xml
 /commit-wizard-napi/index.js
 /commit-wizard-napi/index.d.ts
 /commit-wizard-napi/*.node
+/commit-wizard-napi/linux-x64-gnu/
+/commit-wizard-napi/x86_64-unknown-linux-gnu/
+/commit-wizard-napi/npm/*/*.node
 
 # miscellaneous build artefacts or temporary files
 *.bak

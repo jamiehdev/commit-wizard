@@ -2,12 +2,12 @@ target
 Cargo.lock
 .cargo
 .github
-npm
 .eslintrc
 .prettierignore
 rustfmt.toml
 yarn.lock
-*.node
+# Don't exclude .node files anymore as we need them for publishing
+# *.node
 .yarn
 __test__
 renovate.json
