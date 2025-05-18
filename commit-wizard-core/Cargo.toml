@@ -1,6 +1,6 @@
 [package]
 name = "commit-wizard-core"
-version = "0.2.6" # Initial version for the core library
+version = "0.2.7" # Initial version for the core library
 edition = "2021" # Let's stick to 2021 for broader compatibility within the workspace
 authors = ["jamiehdev"]
 description = "Core logic for AI-powered conventional commit message generation"
