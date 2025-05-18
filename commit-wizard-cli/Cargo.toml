@@ -1,6 +1,6 @@
 [package]
 name = "commit-wizard-cli"
-version = "0.2.0" # Or align with overall project version
+version = "0.2.6"
 edition = "2021"
 authors = ["jamiehdev"]
 description = "Standalone CLI for AI-powered conventional commit message generation"
@@ -14,4 +14,4 @@ clap = { version = "4.4", features = ["derive"] } # For CoreCliArgs::parse()
 
 [[bin]]
 name = "commit-wizard"
-path = "src/main.rs" 
+path = "src/main.rs"
