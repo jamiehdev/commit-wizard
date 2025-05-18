@@ -209,7 +209,7 @@ checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 
 [[package]]
 name = "commit-wizard-cli"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "commit-wizard-core"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "atty",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "commit-wizard-napi"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "commit-wizard-core",
@@ -960,7 +960,6 @@ dependencies = [
  "napi-derive",
  "napi-sys",
  "once_cell",
- "tokio",
 ]
 
 [[package]]

@@ -195,7 +195,3 @@ Cargo.lock
 !.yarn/versions
 
 yarn.lock
-__test__
-renovate.json
-index.js
-index.d.ts

@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Napi-rs dependencies
-napi = { version = "2.12.2", default-features = false, features = ["napi4", "tokio_rt"] }
+napi = { version = "2.12.2", default-features = false, features = ["napi4"] }
 napi-derive = "2.12.2"
 
 # Core library
