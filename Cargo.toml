@@ -13,3 +13,8 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true # "symbols" is also an option, true is more aggressive
+
+[workspace.package]
+version = "0.2.6"
+edition = "2021"
+authors = ["Jamie <jamie@jamieh.dev>"]
