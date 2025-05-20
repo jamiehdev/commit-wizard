@@ -18,6 +18,7 @@ pub use std::time::Duration;
 
 pub use crate::git::{DiffInfo, ModifiedFile, has_staged_changes, get_staged_files, get_diff_info};
 pub use crate::ai::generate_conventional_commit;
+pub use crate::utils::check_openrouter_api_key;
 
 // argument parsing struct - this can be shared by CLI and NAPI (if NAPI parses from Vec<String>)
 #[derive(Parser, Debug, Clone)] // added Clone
@@ -54,13 +55,7 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
     // or be passed in, to make the core lib more testable and configurable.
     // for now, keeping it simple as it was.
     dotenv().ok();
-    if env::var("OPENROUTER_API_KEY").is_err() {
-        let err_msg = "OPENROUTER_API_KEY environment variable is not set. please set it.";
-        // in a library, we'd typically return an error rather than print and panic/exit.
-        // printing here is for direct user feedback if this lib is used in a simple context.
-        eprintln!("{}", style(err_msg).red().bold()); 
-        return Err(anyhow::anyhow!(err_msg));
-    }
+    check_openrouter_api_key()?;
 
     // welcome banner and staged files check could also be caller's responsibility (CLI/NAPI)
     // for now, keeping them here for functional similarity to the original.

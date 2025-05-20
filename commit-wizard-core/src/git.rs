@@ -3,6 +3,7 @@ use git2::{Repository, DiffOptions, DiffFormat};
 use encoding_rs::Encoding;
 
 /// information about a modified file in the git diff
+#[derive(Debug, Clone)]
 pub struct ModifiedFile {
     pub path: String,
     pub added_lines: usize,
@@ -11,6 +12,7 @@ pub struct ModifiedFile {
 }
 
 /// overall diff information from the repository
+#[derive(Debug, Clone)]
 pub struct DiffInfo {
     pub files: Vec<ModifiedFile>,
     pub summary: String,

@@ -104,4 +104,19 @@ pub fn identify_scope(file_paths: &[String]) -> Option<String> {
 #[allow(dead_code)]
 pub fn format_scope(scope: &str) -> String {
     scope.to_lowercase()
-} 
+}
+
+/// ensure the OPENROUTER_API_KEY environment variable is present
+///
+/// this helper centralises the api key check so both the cli and napi
+/// bindings can reuse it. it prints a styled error message and returns an
+/// error if the variable is missing.
+pub fn check_openrouter_api_key() -> Result<()> {
+    if std::env::var("OPENROUTER_API_KEY").is_err() {
+        let err_msg = "OPENROUTER_API_KEY environment variable is not set. please set it.";
+        eprintln!("{}", crate::style(err_msg).red().bold());
+        Err(anyhow::anyhow!(err_msg))
+    } else {
+        Ok(())
+    }
+}

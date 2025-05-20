@@ -26,12 +26,10 @@ use std::env; // for env::var for API key check
 pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
     dotenv().ok(); // load .env if present
 
-    // API key check (similar to CLI, could be more robust for a library)
-    if env::var("OPENROUTER_API_KEY").is_err() {
-        let err_msg = "OPENROUTER_API_KEY environment variable is not set. please set it.";
-        // output to console for user running the CLI via NAPI
-        eprintln!("{}", style(err_msg).red().bold()); 
-        return Err(napi::Error::new(Status::GenericFailure, err_msg.to_string()));
+    // API key check (similar to CLI, handled in core as well)
+    if let Err(e) = commit_wizard_core::check_openrouter_api_key() {
+        eprintln!("{}", style(e.to_string()).red().bold());
+        return Err(napi::Error::new(Status::GenericFailure, e.to_string()));
     }
 
     // clap expects the first arg to be the program name.

@@ -9,14 +9,10 @@ async fn main() -> Result<()> {
     // this is done here for the CLI version, similar to how NAPI version might handle it.
     dotenv().ok(); 
 
-    // API key check - can be part of CLI startup
-    // note: commit_wizard_core::execute_commit_wizard_flow also does this check internally for now.
-    // for a cleaner design, the core lib might not do the check/printing itself but return specific errors.
-    if env::var("OPENROUTER_API_KEY").is_err() {
-        println!("{}", style("error: OPENROUTER_API_KEY environment variable is not set.").red().bold());
-        println!("{}", style("please set it with: export OPENROUTER_API_KEY=your-api-key").yellow());
-        // optionally, return Ok(()) or an error to prevent core logic from running if API key is essential.
-        // for now, allowing core logic to also check and potentially fail.
+    // API key check - commit_wizard_core also checks this
+    if let Err(e) = commit_wizard_core::check_openrouter_api_key() {
+        println!("{} {}", style("error:").red().bold(), style(e).red());
+        // allow execution to continue so the core library can handle it if desired
     }
 
     // parse arguments using the shared CoreCliArgs struct from the core library
