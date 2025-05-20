@@ -14,7 +14,6 @@ use commit_wizard_core::{
     dotenv, // for loading .env
     Parser // <<< import the Parser trait
 };
-use std::env; // for env::var for API key check
 
 // removed mod ai, git, utils - they are in commit_wizard_core
 // removed direct use of clap::Parser, console::style (except above), dialoguer, indicatif, etc.

@@ -1,14 +1,14 @@
 [package]
 edition = "2021"
 name = "commit-wizard-napi"
-version = "0.2.7"
+version = "0.2.8"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 # Napi-rs dependencies
-napi = { version = "2.12.2", default-features = false, features = ["napi4"] }
+napi = { version = "2.12.2", default-features = false, features = ["napi4", "tokio_rt"] }
 napi-derive = "2.12.2"
 
 # Core library
