@@ -1,6 +1,6 @@
 {
   "name": "@jamiehdev/commit-wizard",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Write Conventional Commits with AI",
   "keywords": [
     "git",
