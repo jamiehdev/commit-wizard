@@ -1,19 +1,12 @@
 use anyhow::Result;
 use clap::Parser;
 use commit_wizard_core::{CoreCliArgs, execute_commit_wizard_flow, style, dotenv};
-use std::env; // required for env::var for API key check
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // load environment variables from .env file if present
     // this is done here for the CLI version, similar to how NAPI version might handle it.
-    dotenv().ok(); 
-
-    // API key check - commit_wizard_core also checks this
-    if let Err(e) = commit_wizard_core::check_openrouter_api_key() {
-        println!("{} {}", style("error:").red().bold(), style(e).red());
-        // allow execution to continue so the core library can handle it if desired
-    }
+    dotenv().ok();
 
     // parse arguments using the shared CoreCliArgs struct from the core library
     let cli_args = CoreCliArgs::parse();

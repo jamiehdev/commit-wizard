@@ -25,12 +25,6 @@ use commit_wizard_core::{
 pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
     dotenv().ok(); // load .env if present
 
-    // API key check (similar to CLI, handled in core as well)
-    if let Err(e) = commit_wizard_core::check_openrouter_api_key() {
-        eprintln!("{}", style(e.to_string()).red().bold());
-        return Err(napi::Error::new(Status::GenericFailure, e.to_string()));
-    }
-
     // clap expects the first arg to be the program name.
     let mut full_argv = vec!["commit-wizard-napi".to_string()]; // dummy program name
     full_argv.extend(argv);
