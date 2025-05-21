@@ -1,6 +1,6 @@
 [package]
 name = "commit-wizard-core"
-version = "0.2.8" # Initial version for the core library
+version = "0.2.9" # Initial version for the core library
 edition = "2021" # Let's stick to 2021 for broader compatibility within the workspace
 authors = ["jamiehdev"]
 description = "Core logic for AI-powered conventional commit message generation"
@@ -21,7 +21,7 @@ lazy_static = "1.4"
 indicatif = "0.17"
 dialoguer = "0.11" # For interactive prompts, if core lib handles them
 console = "0.15"   # For styled output, if core lib handles them
-clap = { version = "4.4", features = ["derive"] } # If core lib parses args or uses the struct 
+clap = { version = "4.4", features = ["derive"] } # If core lib parses args or uses the struct
 edit = "0.1.4" # for editing commit messages in an external editor
 crossterm = "0.27" # for terminal mode control
 atty = "0.2" # for terminal detection

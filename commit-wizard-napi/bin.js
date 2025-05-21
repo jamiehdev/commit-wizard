@@ -35,11 +35,20 @@ try {
     });
 } catch (initialError) {
   console.error("Could not load Node.js module:", initialError.message);
-  // if loading the Node.js binding fails, fall back to the native CLI binary
+
+  // fall back to the native CLI binary if available
   try {
     const path = require('path');
+    const fs = require('fs');
     const { execFileSync } = require('child_process');
     const binaryPath = path.resolve(__dirname, '..', 'target', 'release', 'commit-wizard');
+
+    if (!fs.existsSync(binaryPath)) {
+      console.error(`Native binary not found at ${binaryPath}.`);
+      console.error('Run `cargo build --release` in the repository root to build the binary.');
+      process.exit(1);
+    }
+
     console.log(`Using native binary: ${binaryPath}`);
     execFileSync(binaryPath, process.argv.slice(2), {
       stdio: 'inherit',

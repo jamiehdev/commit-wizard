@@ -251,6 +251,10 @@ cd commit-wizard-napi
 npm run build-all
 ```
 
+after building you can run the cli via `npm link` or by executing the native
+binary. if these build steps are skipped, running `cw` will result in an error
+similar to `Could not load Node.js module: Cannot find module './index'`.
+
 5. install the CLI binary (optional):
 ```
 cargo install --path commit-wizard-cli
@@ -261,6 +265,19 @@ cargo install --path commit-wizard-cli
 cd commit-wizard-napi
 npm link
 ```
+
+### publishing to npm (maintainers)
+
+Before publishing a new release run the following commands to ensure the loader
+files are generated and included in the package:
+
+```bash
+npm run build
+npm run prepare_for_prepublish
+```
+
+`npm publish` will then run `napi prepublish` automatically via the
+`prepublishOnly` script.
 
 ## how it works
 
