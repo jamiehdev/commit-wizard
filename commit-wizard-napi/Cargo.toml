@@ -1,7 +1,10 @@
 [package]
-edition = "2021"
 name = "commit-wizard-napi"
-version = "0.2.2"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

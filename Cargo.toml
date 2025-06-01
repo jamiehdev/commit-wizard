@@ -6,6 +6,13 @@ members = [
 ]
 resolver = "2" # Good practice for modern workspaces
 
+[workspace.package]
+version = "1.0.0"
+authors = ["jamie (jamiehdev)"]
+license = "MIT"
+edition = "2021"
+repository = "https://github.com/jamiehdev/commit-wizard"
+
 # Optional: Define shared profile settings for all workspace members
 [profile.release]
 opt-level = 3
