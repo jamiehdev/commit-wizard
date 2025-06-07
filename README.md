@@ -1,278 +1,418 @@
-# commit wizard
+<h1 align="center">commit wizard 🧙</h1>
+<p align="center">AI-powered conventional commit message generator</p>
 
-an ai-powered conventional commit message generator for git repositories.
+<p align="center"><code>npm i -g @jamiehdev/commit-wizard</code></p>
 
-## overview
+![Commit Wizard demo GIF showing: commit-wizard](./.github/demo.gif)
 
-commit wizard analyses your git diff and uses ai to generate a well-formatted [conventional commit](https://www.conventionalcommits.org/) message based on your changes. it intelligently ignores large files, minified files, and binary files to focus on meaningful code changes.
+---
+
+<details>
+<summary><strong>Table of contents</strong></summary>
+
+<!-- Begin ToC -->
+
+- [quickstart](#quickstart)
+- [why commit wizard?](#why-commit-wizard)
+- [features](#features)
+- [system requirements](#system-requirements)
+- [cli reference](#cli-reference)
+- [installation](#installation)
+- [configuration guide](#configuration-guide)
+  - [environment variables setup](#environment-variables-setup)
+  - [model configuration](#model-configuration)
+  - [example configurations](#example-configurations)
+- [usage examples](#usage-examples)
+- [conventional commits compliance](#conventional-commits-compliance)
+- [supported ai providers](#supported-ai-providers)
+- [faq](#faq)
+- [contributing](#contributing)
+  - [development workflow](#development-workflow)
+  - [building from source](#building-from-source)
+- [security & responsible ai](#security--responsible-ai)
+- [license](#license)
+
+<!-- End ToC -->
+
+</details>
+
+---
+
+## quickstart
+
+install via npm:
+
+```shell
+npm i -g @jamiehdev/commit-wizard
+```
+
+Set your OpenRouter API key:
+
+```shell
+export OPENROUTER_API_KEY="your-api-key-here"
+```
+
+> **Note:** You can also place your API key into a `.env` file at the root of your project:
+>
+> ```env
+> OPENROUTER_API_KEY=your-api-key-here
+> OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
+> ```
+
+Make some changes in your git repository, stage them, and run:
+
+```shell
+commit-wizard
+```
+
+That's it! commit wizard will:
+- analyse your staged changes (or unstaged if nothing is staged)
+- generate a conventional commit message using ai
+- let you review, edit, or regenerate the message
+- commit your changes with the perfect message
+
+---
+
+## why commit wizard?
+
+commit wizard is built for developers who want **consistent, meaningful commit messages** without the mental overhead. it understands your code changes and generates **conventional commits** that make your git history readable and tooling-friendly.
+
+- **zero setup** - bring your openrouter api key and it just works!
+- **conventional commits compliant** - follows the specification perfectly
+- **context-aware** - analyses file types, change patterns, and semantic meaning
+- **ai-powered scopes** - generates contextual scopes based on actual changes
+- **interactive workflow** - review, edit, or regenerate messages
+- **debug mode** - see exactly what the ai analysed and generated
+- **multiple ai providers** - works with openrouter, openai, and more
+
+---
 
 ## features
 
-- 🧠 ai-powered commit message generation
-- 📦 available as an easy-to-install npm package
-- 📏 follows the conventional commits specification
-- 🔍 analyses git diff to understand your changes
-- 🥷 ignores large files, minified files, and binary files
-- 🔄 works with any git repository
-- 💻 simple cli interface (via `commit-wizard` or `cw` commands)
-- 📋 detects and displays staged changes
-- ✏️ edit generated commit messages before committing
-- 🚀 automatic commit execution with --yes flag
-- 🧩 modular architecture with core library, cli, and node.js components
-- 🌐 cross-platform support for linux, macos, and windows
+| feature | description |
+|---------|-------------|
+| **smart analysis** | detects file types, change patterns, and semantic meaning of your changes |
+| **conventional commits** | generates perfectly formatted conventional commit messages |
+| **ai-generated scopes** | creates contextual scopes based on what code sections actually changed |
+| **interactive workflow** | review, edit, regenerate, or commit with confidence |
+| **debug mode** | see the full ai analysis and reasoning with `--debug` |
+| **multiple providers** | supports openrouter, openai, deepseek, and other providers |
+| **format validation** | ensures all messages follow conventional commits specification |
+| **imperative mood** | automatically validates and suggests proper imperative descriptions |
 
-## installation via npm/yarn (recommended)
+---
 
-this is the easiest way to get started with commit wizard.
+## system requirements
 
-### prerequisites for npm/yarn installation
+| requirement | details |
+|-------------|---------|
+| operating systems | macos, linux, windows |
+| node.js | 16+ (for npm installation) |
+| git | any recent version |
+| ai api key | openrouter (recommended) or openai |
 
-- **node.js and npm/yarn**: commit wizard is distributed as an npm package which requires node.js.
-  - install node.js (which includes npm) from [nodejs.org](https://nodejs.org/).
-  - yarn can be installed via npm: `npm install -g yarn`.
-- **git**: ensure git is installed and accessible in your path.
-- **text editor**: for editing commit messages - commit wizard will use your system's default editor.
-  - it looks for editors set in the `EDITOR` or `VISUAL` environment variables.
-  - if none is set, it will try to find common editors (VS Code (`code -w`), nvim, vim, nano, etc.) on your system.
-- **openrouter api key**: for the ai functionality.
-  1. visit [openrouter.ai](https://openrouter.ai/) and create an account.
-  2. generate a new api key from your account dashboard.
-  3. set this key as an environment variable (see setup below).
+---
 
-### installing the package
+## cli reference
 
-```bash
-# using npm
-npm install -g @jamiehdev/commit-wizard
+| command | purpose | example |
+|---------|---------|---------|
+| `commit-wizard` | interactive commit message generation | `commit-wizard` |
+| `commit-wizard --debug` | show detailed ai analysis and reasoning | `commit-wizard --debug` |
+| `commit-wizard --yes` | auto-commit without confirmation | `commit-wizard --yes` |
+| `commit-wizard --verbose` | show detailed file change information | `commit-wizard --verbose` |
+| `commit-wizard --help` | show all available options | `commit-wizard --help` |
 
-# or using yarn
-yarn global add @jamiehdev/commit-wizard
-```
+### key flags
 
-### setup after installation
+| flag | short | description |
+|------|-------|-------------|
+| `--path <PATH>` | `-p` | specify git repository path (defaults to current directory) |
+| `--max-size <KB>` | | maximum file size to analyse in kb (default: 100) |
+| `--max-files <NUM>` | `-f` | maximum number of files to analyse (default: 10) |
+| `--verbose` | `-v` | show detailed diff information |
+| `--yes` | `-y` | automatically commit when confirmed |
+| `--debug` | | show debug information including raw ai responses |
 
-set the required environment variable for the ai integration:
+---
 
-```bash
-export OPENROUTER_API_KEY="your-api-key"
-# optional: specify a model (defaults to a capable free model)
-# export OPENROUTER_MODEL="meta-llama/llama-3-70b-instruct:free"
-```
+## installation
 
-you can add these lines to your shell configuration file (e.g., `.bashrc`, `.zshrc`, `.profile`) to make them permanent.
-
-alternatively, commit wizard will also load these variables from a `.env` file in the directory where you run the command, or in any parent directory.
-create a `.env` file in your project or home directory with:
-
-```env
-OPENROUTER_API_KEY=your-api-key
-# OPENROUTER_MODEL=meta-llama/llama-3-70b-instruct:free
-```
-
-you can also set your preferred text editor for editing commit messages:
+<details open>
+<summary><strong>from npm (recommended)</strong></summary>
 
 ```bash
-export EDITOR=nano  # or vim, emacs, code, etc.
+npm i -g @jamiehdev/commit-wizard
 ```
 
-## usage (npm/yarn installed)
+also available as a shorter alias:
+```bash
+# you can also use the 'cw' alias
+cw --help
+```
 
-once installed globally, you can run `commit-wizard` or its alias `cw` in any git repository with staged changes:
+</details>
+
+<details>
+<summary><strong>from cargo</strong></summary>
 
 ```bash
-# navigate to your git repository
-cd /path/to/your/project
-
-# make and stage your changes
-git add .
-
-# run commit wizard
-commit-wizard
-# or
-cw
+cargo install commit-wizard
 ```
 
-### options
+</details>
 
-the same options apply as when building from source:
-
-```
-options:
-  -p, --path <PATH>            path to git repository (defaults to current directory)
-  -m, --max-size <MAX_SIZE>    maximum file size in kb to analyse [default: 100]
-  -f, --max-files <MAX_FILES>  maximum number of files to analyse [default: 10]
-  -v, --verbose                show detailed diff information
-  -y, --yes                    automatically run the commit command when confirmed
-  -h, --help                   print help
-  -V, --version                print version
-```
-
-### platform support
-
-commit wizard is available for the following platforms:
-
-| platform | architecture | npm package specifier |
-|----------|--------------|----------------------|
-| linux    | x64          | @jamiehdev/commit-wizard-linux-x64-gnu |
-| macos    | x64          | @jamiehdev/commit-wizard-darwin-x64 |
-| macos    | arm64 (m1/m2) | @jamiehdev/commit-wizard-darwin-arm64 |
-| windows  | x64          | @jamiehdev/commit-wizard-win32-x64-msvc |
-
-these packages are automatically installed as optional dependencies based on your platform.
-
-### examples (npm/yarn installed)
+<details>
+<summary><strong>build from source</strong></summary>
 
 ```bash
-# generate commit message for current directory
-cw
-
-# generate commit message for specific repository
-cw --path /path/to/another/repo
-
-# generate commit message with detailed output and auto-commit
-cw --verbose --yes
-```
-
-## building from source (for development)
-
-if you want to contribute or build from the source code directly:
-
-### prerequisites
-
-- rust and cargo (see [rustup.rs](https://rustup.rs/))
-- git
-- node.js and npm (for the npm package)
-- text editor (for editing commit messages)
-- openrouter api key (for ai functionality)
-
-#### installing prerequisites
-
-##### linux
-
-```bash
-# install git
-sudo apt update
-sudo apt install git  # debian/ubuntu
-# or
-sudo dnf install git  # fedora
-# or
-sudo pacman -S git    # arch
-
-# install rust and cargo
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-
-# install node.js and npm (if building the npm package)
-sudo apt install nodejs npm  # debian/ubuntu
-# or
-sudo dnf install nodejs npm  # fedora
-# or
-sudo pacman -S nodejs npm    # arch
-```
-
-##### macos
-
-```bash
-# install git
-brew install git  # using homebrew
-# or install xcode command line tools which includes git
-xcode-select --install
-
-# install rust and cargo
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-
-# install node.js and npm (if building the npm package)
-brew install node
-```
-
-##### windows
-
-1. install git:
-   - download and install from [git-scm.com](https://git-scm.com/download/win)
-
-2. install rust and cargo:
-   - download and run rustup-init.exe from [rustup.rs](https://rustup.rs/)
-   - follow the onscreen instructions
-
-3. install node.js and npm (if building the npm package):
-   - download and install from [nodejs.org](https://nodejs.org/)
-
-##### getting an openrouter api key
-
-1. visit [openrouter.ai](https://openrouter.ai/) and create an account
-2. generate a new api key from your account dashboard
-3. save this key as you'll need it to use commit-wizard
-
-### project structure
-
-commit wizard is organised as a rust workspace with three main components:
-
-- **commit-wizard-core**: the core library containing the main functionality
-- **commit-wizard-cli**: the command-line interface
-- **commit-wizard-napi**: the node.js binding for npm distribution
-
-### setup
-
-1. clone this repository:
-```bash
-# https
+# clone the repository
 git clone https://github.com/jamiehdev/commit-wizard.git
-
-# or ssh
-git clone git@github.com:jamiehdev/commit-wizard.git
-
 cd commit-wizard
+
+# build and install
+cargo build --release
+cargo install --path .
 ```
 
-2. set environment variables for the ai integration:
-```
-export OPENROUTER_API_KEY=your-api-key
-export OPENROUTER_MODEL=nvidia/llama-3.1-nemotron-ultra-253b-v1:free  # optional
-export EDITOR=nano  # optional - set your preferred editor
+</details>
+
+---
+
+## configuration guide
+
+### environment variables setup
+
+commit wizard uses environment variables for configuration. you can set these in your shell or in a `.env` file in your project root.
+
+| variable | required | description | example |
+|----------|----------|-------------|---------|
+| `OPENROUTER_API_KEY` | yes | your openrouter api key | `sk-or-v1-...` |
+| `OPENROUTER_MODEL` | no | ai model to use | `deepseek/deepseek-r1-0528:free` |
+
+### model configuration
+
+the default model is `deepseek/deepseek-r1-0528:free`, which provides excellent code analysis capabilities. you can override this by setting the `OPENROUTER_MODEL` environment variable.
+
+#### popular model options:
+
+| provider | model | description |
+|----------|-------|-------------|
+| deepseek | `deepseek/deepseek-r1-0528:free` | latest free model with excellent code understanding |
+| openai | `gpt-4o-mini` | fast and cost-effective |
+| anthropic | `anthropic/claude-3.5-sonnet` | great reasoning capabilities |
+| meta | `meta-llama/llama-3.1-8b-instruct:free` | free option with good performance |
+
+### example configurations
+
+**.env file (recommended):**
+```env
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
+OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
 ```
 
-or create a `.env` file in the project directory:
-```
-OPENROUTER_API_KEY=your-api-key
-OPENROUTER_MODEL=nvidia/llama-3.1-nemotron-ultra-253b-v1:free
-# optional: set your preferred editor for commit messages
-# EDITOR=code -w
+**Shell configuration:**
+```bash
+# Add to your ~/.bashrc, ~/.zshrc, etc.
+export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
+export OPENROUTER_MODEL="deepseek/deepseek-r1-0528:free"
 ```
 
-3. build all components:
+---
+
+## usage examples
+
+here are some common usage patterns:
+
+| ✨ | command | what happens |
+|----|---------|--------------|
+| 1 | `commit-wizard` | analyses staged changes and generates a commit message interactively |
+| 2 | `commit-wizard --debug` | shows detailed ai analysis, perfect for understanding the reasoning |
+| 3 | `commit-wizard --verbose` | displays file-by-file change analysis before generating the message |
+| 4 | `commit-wizard --yes` | generates message and commits automatically (great for scripts) |
+| 5 | `commit-wizard -p /path/to/repo` | analyses changes in a different repository |
+
+### example output:
+
+```bash
+$ commit-wizard --debug
+
+🧙 commit-wizard (core engine)
+ai-powered conventional commit message generator
+
+✅ generated commit message:
+
+feat(auth): add jwt token validation middleware
+
+? what would you like to do? ›
+❯ yes, commit this message
+  edit this message  
+  no, regenerate message
 ```
+
+---
+
+## conventional commits compliance
+
+commit wizard follows the [conventional commits](https://www.conventionalcommits.org/) specification strictly:
+
+### format
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### supported types
+- `feat`: new feature
+- `fix`: bug fix
+- `docs`: documentation changes
+- `style`: formatting changes (no code change)
+- `refactor`: code change that neither fixes bug nor adds feature
+- `perf`: performance improvements
+- `test`: adding/correcting tests
+- `build`: build system or dependency changes
+- `ci`: ci configuration changes
+- `chore`: other changes
+
+### smart scope generation
+unlike tools with predefined scopes, commit wizard generates **contextual scopes** based on your actual changes:
+- `auth` for authentication-related changes
+- `parser` for parsing logic updates
+- `api` for api endpoint modifications
+- `cli` for command-line interface changes
+- and many more based on your codebase!
+
+---
+
+## supported ai providers
+
+commit wizard works with any openai-compatible api. popular choices:
+
+| provider | api base | models | notes |
+|----------|----------|--------|-------|
+| **openrouter** | `https://openrouter.ai/api/v1` | 100+ models | recommended - access to many models |
+| **openai** | `https://api.openai.com/v1` | gpt models | direct openai access |
+| **deepseek** | `https://api.deepseek.com` | deepseek models | excellent for code analysis |
+| **anthropic** | via openrouter | claude models | great reasoning capabilities |
+
+---
+
+## faq
+
+<details>
+<summary><strong>how accurate are the generated commit messages?</strong></summary>
+
+commit wizard analyses your code changes semantically, detecting file types, change patterns, and the intent behind modifications. the ai generates contextual, meaningful commit messages that accurately reflect what actually changed.
+
+</details>
+
+<details>
+<summary><strong>can i edit the generated messages?</strong></summary>
+
+absolutely! the interactive workflow lets you:
+- accept the message as-is
+- edit it in your preferred editor
+- regenerate a completely new message
+- cancel and make manual commits
+
+</details>
+
+<details>
+<summary><strong>what if i don't have staged changes?</strong></summary>
+
+commit wizard will automatically analyse your unstaged changes and warn you. you can stage the changes you want and run it again, or let it analyse everything and then stage before committing.
+
+</details>
+
+<details>
+<summary><strong>how much does it cost to use?</strong></summary>
+
+using openrouter with the default free model (`deepseek/deepseek-r1-0528:free`) costs nothing. premium models have small per-request costs (typically $0.001-0.01 per commit).
+
+</details>
+
+<details>
+<summary><strong>does it work with large codebases?</strong></summary>
+
+yes! commit wizard has built-in limits (configurable) to analyse only the most relevant changes:
+- maximum file size: 100kb by default (configurable)
+- maximum files: 10 by default (configurable)
+- smart truncation of large diffs
+
+</details>
+
+<details>
+<summary><strong>can i use it in ci/cd pipelines?</strong></summary>
+
+yes! use the `--yes` flag for automated commits:
+
+```bash
+commit-wizard --yes
+```
+
+perfect for automated dependency updates, code generation, etc.
+
+</details>
+
+---
+
+## contributing
+
+we welcome contributions! whether you're fixing bugs, adding features, or improving documentation.
+
+### development workflow
+
+1. **fork and clone** the repository
+2. **create a feature branch** from `main`
+3. **make your changes** with tests
+4. **run the test suite**: `cargo test`
+5. **check formatting**: `cargo fmt --check`
+6. **run clippy**: `cargo clippy -- -D warnings`
+7. **open a pull request**
+
+### building from source
+
+```bash
+# clone the repository
+git clone https://github.com/jamiehdev/commit-wizard.git
+cd commit-wizard
+
+# build in development mode
+cargo build
+
+# run tests
+cargo test
+
+# run with debug output
+cargo run -- --debug
+
+# build release version
 cargo build --release
 ```
 
-4. build the npm package (optional):
-```
-cd commit-wizard-napi
-npm run build-all
-```
+---
 
-5. install the CLI binary (optional):
-```
-cargo install --path commit-wizard-cli
-```
+## security & responsible ai
 
-6. link the npm package locally (optional):
-```
-cd commit-wizard-napi
-npm link
-```
+- **api key security**: store api keys in environment variables or `.env` files, never in code
+- **privacy**: your code changes are sent to the ai provider for analysis
+- **no data retention**: most providers offer zero data retention options
+- **local processing**: all git operations happen locally on your machine
 
-## how it works
+for security concerns, please email [jamie@prettypragmatic.com](mailto:jamie@prettypragmatic.com).
 
-1. commit wizard checks for staged changes and displays them if found
-2. it analyses your git diff to understand the changes
-3. it filters out binary files, minified files, and large files
-4. it sends the relevant changes to the ai model
-5. the ai generates a conventional commit message based on your changes
-6. you can accept, edit, or regenerate the suggested commit message
-7. with the --yes flag, it can automatically execute the git commit command
+---
 
 ## license
 
-mit
+this project is licensed under the [mit license](LICENSE).
+
+---
+
+<p align="center">
+  made with ❤️ for developers who care about commit quality
+</p>
 
