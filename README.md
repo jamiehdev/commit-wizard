@@ -1,5 +1,5 @@
 <h1 align="center">commit wizard 🧙</h1>
-<p align="center">AI-powered conventional commit message generator</p>
+<p align="center">ai-powered conventional commit message generator</p>
 
 <p align="center"><code>npm i -g @jamiehdev/commit-wizard</code></p>
 
@@ -10,16 +10,14 @@
 ---
 
 <details>
-<summary><strong>Table of contents</strong></summary>
+<summary><strong>Table of Contents</strong></summary>
 
 <!-- Begin ToC -->
 
 - [quickstart](#quickstart)
-- [why commit wizard?](#why-commit-wizard)
 - [features](#features)
 - [system requirements](#system-requirements)
 - [cli reference](#cli-reference)
-- [installation](#installation)
 - [configuration guide](#configuration-guide)
   - [environment variables setup](#environment-variables-setup)
   - [model configuration](#model-configuration)
@@ -48,59 +46,47 @@ install via npm:
 npm i -g @jamiehdev/commit-wizard
 ```
 
-Set your OpenRouter API key:
+set your OpenRouter API key:
 
 ```shell
 export OPENROUTER_API_KEY="your-api-key-here"
 ```
 
-> **Note:** You can also place your API key into a `.env` file at the root of your project:
+> **note:** you can also place your API key into a `.env` file at the root of your project:
 >
 > ```env
 > OPENROUTER_API_KEY=your-api-key-here
 > OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
 > ```
 
-Make some changes in your git repository, stage them, and run:
+make some changes in your git repository, stage them, and run:
 
 ```shell
 commit-wizard
 ```
 
-That's it! commit wizard will:
+that's it! commit wizard will:
 - analyse your staged changes (or unstaged if nothing is staged)
-- generate a conventional commit message using ai
+- generate a conventional commit message using AI
 - let you review, edit, or regenerate the message
 - commit your changes with the perfect message
 
 ---
 
-## why commit wizard?
-
-commit wizard is built for developers who want **consistent, meaningful commit messages** without the mental overhead. it understands your code changes and generates **conventional commits** that make your git history readable and tooling-friendly.
-
-- **zero setup** - bring your openrouter api key and it just works!
-- **conventional commits compliant** - follows the specification perfectly
-- **context-aware** - analyses file types, change patterns, and semantic meaning
-- **ai-powered scopes** - generates contextual scopes based on actual changes
-- **interactive workflow** - review, edit, or regenerate messages
-- **debug mode** - see exactly what the ai analysed and generated
-- **multiple ai providers** - works with openrouter, openai, and more
-
----
-
 ## features
+
+commit wizard is built for developers who want **consistent, meaningful commit messages** without the mental overhead. It understands your code changes and generates **conventional commits** that make your git history readable and tooling-friendly.
 
 | feature | description |
 |---------|-------------|
-| **smart analysis** | detects file types, change patterns, and semantic meaning of your changes |
-| **conventional commits** | generates perfectly formatted conventional commit messages |
-| **ai-generated scopes** | creates contextual scopes based on what code sections actually changed |
-| **interactive workflow** | review, edit, regenerate, or commit with confidence |
-| **debug mode** | see the full ai analysis and reasoning with `--debug` |
-| **multiple providers** | supports openrouter, openai, deepseek, and other providers |
-| **format validation** | ensures all messages follow conventional commits specification |
-| **imperative mood** | automatically validates and suggests proper imperative descriptions |
+| **smart analysis** | detects file types, change patterns, and semantic meaning of your changes. |
+| **conventional commits** | generates perfectly formatted conventional commit messages. |
+| **ai-generated scopes** | creates contextual scopes based on what code sections actually changed. |
+| **interactive workflow** | review, edit, regenerate, or commit with confidence. |
+| **debug mode** | see the full ai analysis and reasoning with `--debug`. |
+| **multiple providers** | supports openrouter, openai, deepseek, and other providers. |
+| **format validation** | ensures all messages follow conventional commits specification. |
+| **imperative mood** | automatically validates and suggests proper imperative descriptions. |
 
 ---
 
@@ -135,49 +121,6 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 | `--verbose` | `-v` | show detailed diff information |
 | `--yes` | `-y` | automatically commit when confirmed |
 | `--debug` | | show debug information including raw ai responses |
-
----
-
-## installation
-
-<details open>
-<summary><strong>from npm (recommended)</strong></summary>
-
-```bash
-npm i -g @jamiehdev/commit-wizard
-```
-
-also available as a shorter alias:
-```bash
-# you can also use the 'cw' alias
-cw --help
-```
-
-</details>
-
-<details>
-<summary><strong>from cargo</strong></summary>
-
-```bash
-cargo install commit-wizard
-```
-
-</details>
-
-<details>
-<summary><strong>build from source</strong></summary>
-
-```bash
-# clone the repository
-git clone https://github.com/jamiehdev/commit-wizard.git
-cd commit-wizard/commit-wizard-cli
-
-# build and install
-cargo build --release
-cargo install --path .
-```
-
-</details>
 
 ---
 
@@ -220,24 +163,10 @@ export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
 export OPENROUTER_MODEL="deepseek/deepseek-r1-0528:free"
 ```
 
----
-
-## usage examples
-
-here are some common usage patterns:
-
-| ✨ | command | what happens |
-|----|---------|--------------|
-| 1 | `commit-wizard` | analyses staged changes and generates a commit message interactively |
-| 2 | `commit-wizard --debug` | shows detailed ai analysis, perfect for understanding the reasoning |
-| 3 | `commit-wizard --verbose` | displays file-by-file change analysis before generating the message |
-| 4 | `commit-wizard --yes` | generates message and commits automatically (great for scripts) |
-| 5 | `commit-wizard -p /path/to/repo` | analyses changes in a different repository |
-
 ### example output:
 
 ```bash
-$ commit-wizard --debug
+$ commit-wizard
 
 🧙 commit-wizard (core engine)
 ai-powered conventional commit message generator
@@ -251,6 +180,20 @@ feat(auth): add jwt token validation middleware
   edit this message  
   no, regenerate message
 ```
+
+---
+
+## usage examples
+
+here are some common usage patterns:
+
+| ✨ | command | what happens |
+|----|---------|--------------|
+| 1 | `commit-wizard` | analyses staged changes and generates a commit message interactively |
+| 2 | `commit-wizard --debug` | shows detailed ai analysis, perfect for understanding the reasoning |
+| 3 | `commit-wizard --verbose` | displays file-by-file change analysis before generating the message |
+| 4 | `commit-wizard --yes` | generates message and commits automatically (great for scripts) |
+| 5 | `commit-wizard -p /path/to/repo` | analyses changes in a different repository |
 
 ---
 
@@ -417,4 +360,3 @@ this project is licensed under the [mit license](LICENSE).
 <p align="center">
   made with ❤️ for developers who care about commit quality
 </p>
-
