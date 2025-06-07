@@ -103,13 +103,13 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 
 ## cli reference
 
-| command | purpose | example |
-|---------|---------|---------|
-| `commit-wizard` | interactive commit message generation | `commit-wizard` |
-| `commit-wizard --debug` | show detailed ai analysis and reasoning | `commit-wizard --debug` |
-| `commit-wizard --yes` | auto-commit without confirmation | `commit-wizard --yes` |
-| `commit-wizard --verbose` | show detailed file change information | `commit-wizard --verbose` |
-| `commit-wizard --help` | show all available options | `commit-wizard --help` |
+| command | purpose |
+|---------|---------|
+| `commit-wizard` | interactive commit message generation |
+| `commit-wizard --debug` | show detailed ai analysis and reasoning |
+| `commit-wizard --yes` | auto-commit without confirmation |
+| `commit-wizard --verbose` | show detailed file change information |
+| `commit-wizard --help` | show all available options |
 
 ### key flags
 
@@ -121,6 +121,24 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 | `--verbose` | `-v` | show detailed diff information |
 | `--yes` | `-y` | automatically commit when confirmed |
 | `--debug` | | show debug information including raw ai responses |
+
+### example output:
+
+```bash
+$ commit-wizard
+
+🧙 commit-wizard (core engine)
+ai-powered conventional commit message generator
+
+✅ generated commit message:
+
+feat(auth): add jwt token validation middleware
+
+? what would you like to do? ›
+❯ yes, commit this message
+  edit this message  
+  no, regenerate message
+```
 
 ---
 
@@ -162,38 +180,6 @@ OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
 export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
 export OPENROUTER_MODEL="deepseek/deepseek-r1-0528:free"
 ```
-
-### example output:
-
-```bash
-$ commit-wizard
-
-🧙 commit-wizard (core engine)
-ai-powered conventional commit message generator
-
-✅ generated commit message:
-
-feat(auth): add jwt token validation middleware
-
-? what would you like to do? ›
-❯ yes, commit this message
-  edit this message  
-  no, regenerate message
-```
-
----
-
-## usage examples
-
-here are some common usage patterns:
-
-| ✨ | command | what happens |
-|----|---------|--------------|
-| 1 | `commit-wizard` | analyses staged changes and generates a commit message interactively |
-| 2 | `commit-wizard --debug` | shows detailed ai analysis, perfect for understanding the reasoning |
-| 3 | `commit-wizard --verbose` | displays file-by-file change analysis before generating the message |
-| 4 | `commit-wizard --yes` | generates message and commits automatically (great for scripts) |
-| 5 | `commit-wizard -p /path/to/repo` | analyses changes in a different repository |
 
 ---
 
