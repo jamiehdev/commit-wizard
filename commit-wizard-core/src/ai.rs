@@ -37,7 +37,7 @@ struct ResponseMessage {
 }
 
 /// generate a conventional commit message based on the diff information
-pub async fn generate_conventional_commit(diff_info: &DiffInfo) -> Result<String> {
+pub async fn generate_conventional_commit(diff_info: &DiffInfo, debug: bool) -> Result<String> {
     // get api key and model from environment variables
     let api_key = env::var("OPENROUTER_API_KEY")
         .context("OPENROUTER_API_KEY environment variable is not set")?;
@@ -47,6 +47,16 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo) -> Result<String
     
     // construct the prompt for the ai
     let prompt = construct_prompt(diff_info);
+    
+    if debug {
+        println!("\DEBUG: Prompt being sent to AI:");
+        println!("═══════════════════════════════════════");
+        println!("{}", prompt);
+        println!("═══════════════════════════════════════");
+        println!("Prompt length: {} characters", prompt.len());
+        println!("Model: {}", model);
+        println!();
+    }
     
     // create a new progress bar for the API call
     let spinner = ProgressBar::new_spinner();
@@ -100,6 +110,18 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo) -> Result<String
         match response_body.choices.first() {
             Some(choice) => {
                 let commit_msg = choice.message.content.trim().to_string();
+                
+                if debug {
+                    println!("\n🐛 DEBUG: Raw AI response:");
+                    println!("═══════════════════════════════════════");
+                    println!("{}", commit_msg);
+                    println!("═══════════════════════════════════════");
+                    println!("Length: {} characters", commit_msg.len());
+                    println!("First line: {:?}", commit_msg.lines().next().unwrap_or(""));
+                    println!("Total lines: {}", commit_msg.lines().count());
+                    println!();
+                }
+                
                 validate_commit_message(&commit_msg)?;
                 Ok(commit_msg)
             },
@@ -138,9 +160,17 @@ fn construct_prompt(diff_info: &DiffInfo) -> String {
             prompt.push_str(&format!("change indicators: {:?}\n", file.change_hints));
         }
         
-        // truncate diff content if it's too long
+        // truncate diff content if it's too long with Unicode-safe slicing
         let diff_content = if file.diff_content.len() > 1000 {
-            format!("{}... (truncated)", &file.diff_content[..1000])
+            // Use Unicode-safe truncation to avoid panics with emoji characters
+            let mut end_pos = std::cmp::min(1000, file.diff_content.len());
+            
+            // Find the nearest character boundary before 1000
+            while end_pos > 0 && !file.diff_content.is_char_boundary(end_pos) {
+                end_pos -= 1;
+            }
+            
+            format!("{}... (truncated)", &file.diff_content[..end_pos])
         } else {
             file.diff_content.clone()
         };

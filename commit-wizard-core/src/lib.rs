@@ -42,6 +42,10 @@ pub struct CoreCliArgs {
     /// automatically run the commit command when confirmed
     #[arg(short = 'y', long)]
     pub yes: bool,
+
+    /// show debug information including raw AI responses
+    #[arg(long)]
+    pub debug: bool,
 }
 
 // the core commit generation and interaction logic
@@ -117,7 +121,7 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
         return Err(anyhow::anyhow!("no changes detected in the repository"));
     }
     
-    let mut commit_message = ai::generate_conventional_commit(&diff_info)
+    let mut commit_message = ai::generate_conventional_commit(&diff_info, args.debug)
         .await
         .context("failed to generate commit message")?;
     
@@ -159,7 +163,7 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
                 },
                 2 => { 
                     println!("\n{}", style("regenerating...").cyan());
-                    commit_message = ai::generate_conventional_commit(&diff_info)
+                    commit_message = ai::generate_conventional_commit(&diff_info, args.debug)
                         .await
                         .context("failed to regenerate commit message")?;
                     println!("\n{}\n", style("✅ newly generated commit message:").green().bold());

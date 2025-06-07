@@ -62,7 +62,16 @@ pub fn truncate_with_ellipsis(text: &str, max_length: usize) -> String {
     if text.len() <= max_length {
         text.to_string()
     } else {
-        format!("{}...", &text[..max_length - 3])
+        // Use Unicode-safe truncation to avoid panics with emoji characters
+        let truncate_at = std::cmp::min(max_length.saturating_sub(3), text.len());
+        let mut end_pos = truncate_at;
+        
+        // Find the nearest character boundary before truncate_at
+        while end_pos > 0 && !text.is_char_boundary(end_pos) {
+            end_pos -= 1;
+        }
+        
+        format!("{}...", &text[..end_pos])
     }
 }
 
