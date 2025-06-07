@@ -3,7 +3,9 @@
 
 <p align="center"><code>npm i -g @jamiehdev/commit-wizard</code></p>
 
-![Commit Wizard demo GIF showing: commit-wizard](./.github/demo.gif)
+<p align="center">
+  <img src="./.github/demo.gif" alt="Commit Wizard demo GIF showing: commit-wizard" />
+</p>
 
 ---
 
