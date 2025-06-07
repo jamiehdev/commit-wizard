@@ -174,7 +174,7 @@ OPENROUTER_API_KEY=sk-or-v1-your-key-here
 OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
 ```
 
-**Shell configuration:**
+**shell configuration:**
 ```bash
 # Add to your ~/.bashrc, ~/.zshrc, etc.
 export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
@@ -236,55 +236,55 @@ commit wizard works with any openai-compatible api. popular choices:
 <details>
 <summary><strong>how accurate are the generated commit messages?</strong></summary>
 
-commit wizard analyses your code changes semantically, detecting file types, change patterns, and the intent behind modifications. the ai generates contextual, meaningful commit messages that accurately reflect what actually changed.
+> commit wizard analyses your code changes semantically, detecting file types, change patterns, and the intent behind modifications. the ai generates contextual, meaningful commit messages that accurately reflect what actually changed.
 
 </details>
 
 <details>
 <summary><strong>can i edit the generated messages?</strong></summary>
 
-absolutely! the interactive workflow lets you:
-- accept the message as-is
-- edit it in your preferred editor
-- regenerate a completely new message
-- cancel and make manual commits
+> absolutely! the interactive workflow lets you:
+> - accept the message as-is
+> - edit it in your preferred editor
+> - regenerate a completely new message
+> - cancel and make manual commits
 
 </details>
 
 <details>
 <summary><strong>what if i don't have staged changes?</strong></summary>
 
-commit wizard will automatically analyse your unstaged changes and warn you. you can stage the changes you want and run it again, or let it analyse everything and then stage before committing.
+> commit wizard will automatically analyse your unstaged changes and warn you. you can stage the changes you want and run it again, or let it analyse everything and then stage before committing.
 
 </details>
 
 <details>
 <summary><strong>how much does it cost to use?</strong></summary>
 
-using openrouter with the default free model (`deepseek/deepseek-r1-0528:free`) costs nothing. premium models have small per-request costs (typically $0.001-0.01 per commit).
+> using openrouter with the default free model (`deepseek/deepseek-r1-0528:free`) costs nothing. premium models have small per-request costs (typically $0.001-0.01 per commit).
 
 </details>
 
 <details>
 <summary><strong>does it work with large codebases?</strong></summary>
 
-yes! commit wizard has built-in limits (configurable) to analyse only the most relevant changes:
-- maximum file size: 100kb by default (configurable)
-- maximum files: 10 by default (configurable)
-- smart truncation of large diffs
+> yes! commit wizard has built-in limits (configurable) to analyse only the most relevant changes:
+> - maximum file size: 100kb by default (configurable)
+> - maximum files: 10 by default (configurable)
+> - smart truncation of large diffs
 
 </details>
 
 <details>
 <summary><strong>can i use it in ci/cd pipelines?</strong></summary>
 
-yes! use the `--yes` flag for automated commits:
-
-```bash
-commit-wizard --yes
-```
-
-perfect for automated dependency updates, code generation, etc.
+> yes! use the `--yes` flag for automated commits:
+>
+> ```bash
+> commit-wizard --yes
+> ```
+>
+> perfect for automated dependency updates, code generation, etc.
 
 </details>
 
