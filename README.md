@@ -3,9 +3,9 @@
 
 <p align="center"><code>npm i -g @jamiehdev/commit-wizard</code></p>
 
-<p align="center">
+<div align="center">
   <img src="./.github/demo.gif" alt="Commit Wizard demo GIF showing: commit-wizard" />
-</p>
+</div>
 
 ---
 
@@ -170,7 +170,7 @@ cargo install commit-wizard
 ```bash
 # clone the repository
 git clone https://github.com/jamiehdev/commit-wizard.git
-cd commit-wizard
+cd commit-wizard/commit-wizard-cli
 
 # build and install
 cargo build --release
@@ -380,7 +380,7 @@ we welcome contributions! whether you're fixing bugs, adding features, or improv
 ```bash
 # clone the repository
 git clone https://github.com/jamiehdev/commit-wizard.git
-cd commit-wizard
+cd commit-wizard/commit-wizard-cli
 
 # build in development mode
 cargo build
