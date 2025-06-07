@@ -1,0 +1,6 @@
+[90m[main 2025-06-07T19:41:08.071Z][0m updateURL https://api2.cursor.sh/updates/api/update/linux-x64/cursor/1.0.0/8dabdef992b0046e46477d01d98f50d380c311dcf9753cbd98d4af9242f25e3f/prerelease
+[90m[main 2025-06-07T19:41:08.071Z][0m update#setState idle
+[91m[main 2025-06-07T19:41:17.906Z][0m [UtilityProcess id: 1, type: fileWatcher, pid: 10030]: crashed with code 15 and reason 'killed'
+[90m[main 2025-06-07T19:41:17.922Z][0m Extension host with pid 10049 exited with code: 0, signal: unknown.
+[90m[main 2025-06-07T19:41:38.072Z][0m update#setState checking for updates
+[90m[main 2025-06-07T19:41:38.167Z][0m update#setState idle

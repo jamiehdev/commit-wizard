@@ -408,7 +408,7 @@ fn classify_file_type(path: &str) -> FileType {
     FileType::Other
 }
 
-/// analyze change hints from diff content with improved semantic detection
+/// analyse change hints from diff content with improved semantic detection
 fn analyze_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint> {
     let mut hints = Vec::new();
     let content_lower = content.to_lowercase();
@@ -419,10 +419,24 @@ fn analyze_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint> {
         return hints;
     }
     
-    // analyze structural additions (strong indicators of new features)
+    // analyse structural additions (strong indicators of new features)
     let added_lines: Vec<&str> = content.lines()
         .filter(|line| line.starts_with('+'))
-        .map(|line| &line[1..]) // remove the '+' prefix
+        .map(|line| {
+            // use Unicode-safe slicing to remove the '+' prefix
+            if line.len() > 1 && line.is_char_boundary(1) {
+                &line[1..]
+            } else if line.len() > 1 {
+                // Find the next character boundary
+                let mut pos = 1;
+                while pos < line.len() && !line.is_char_boundary(pos) {
+                    pos += 1;
+                }
+                &line[pos..]
+            } else {
+                ""
+            }
+        })
         .collect();
     
     let added_content = added_lines.join("\n").to_lowercase();
