@@ -43,13 +43,13 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo, debug: bool) -> 
         .context("OPENROUTER_API_KEY environment variable is not set")?;
     
     let model = env::var("OPENROUTER_MODEL")
-        .unwrap_or_else(|_| "deepseek/deepseek-r1:free".to_string());
+        .unwrap_or_else(|_| "deepseek/deepseek-r1-0528:free".to_string());
     
     // construct the prompt for the ai
     let prompt = construct_prompt(diff_info);
     
     if debug {
-        println!("\DEBUG: Prompt being sent to AI:");
+        println!("🐛 DEBUG: Prompt being sent to AI:");
         println!("═══════════════════════════════════════");
         println!("{}", prompt);
         println!("═══════════════════════════════════════");
@@ -109,16 +109,28 @@ pub async fn generate_conventional_commit(diff_info: &DiffInfo, debug: bool) -> 
         // extract and validate the generated commit message
         match response_body.choices.first() {
             Some(choice) => {
-                let commit_msg = choice.message.content.trim().to_string();
+                let raw_response = choice.message.content.trim().to_string();
                 
                 if debug {
                     println!("\n🐛 DEBUG: Raw AI response:");
                     println!("═══════════════════════════════════════");
-                    println!("{}", commit_msg);
+                    println!("{}", raw_response);
+                    println!("═══════════════════════════════════════");
+                    println!("Length: {} characters", raw_response.len());
+                    println!("First line: {:?}", raw_response.lines().next().unwrap_or(""));
+                    println!("Total lines: {}", raw_response.lines().count());
+                    println!();
+                }
+                
+                // Extract commit message from code blocks or return first line if no code blocks
+                let commit_msg = extract_commit_message(&raw_response);
+                
+                if debug {
+                    println!("🐛 DEBUG: Extracted commit message:");
+                    println!("═══════════════════════════════════════");
+                    println!("'{}'", commit_msg);
                     println!("═══════════════════════════════════════");
                     println!("Length: {} characters", commit_msg.len());
-                    println!("First line: {:?}", commit_msg.lines().next().unwrap_or(""));
-                    println!("Total lines: {}", commit_msg.lines().count());
                     println!();
                 }
                 
@@ -178,7 +190,7 @@ fn construct_prompt(diff_info: &DiffInfo) -> String {
         prompt.push_str(&format!("diff:\n{}\n\n", diff_content));
     }
     
-    prompt.push_str("\nSTRICT INSTRUCTIONS:\n1. follow the context analysis above for type and scope suggestions\n2. use the exact format: <type>[scope]: <description>\n3. if scope is suggested, use it unless clearly wrong\n4. if multiple scopes detected, omit scope entirely\n5. prioritise suggested type from context analysis\n6. description must be imperative, lowercase, under 72 chars, no period\n7. add body only if significant complexity needs explanation\n8. use UK english spelling\n9. output ONLY the commit message, no explanations\n\ngenerate the conventional commit message now:");
+    prompt.push_str("\nSTRICT INSTRUCTIONS:\n1. follow the context analysis above for type suggestions\n2. use the exact format: <type>[optional scope]: <description>\n3. determine scope based on what section of codebase is actually changed\n4. if changes affect multiple unrelated areas, omit scope entirely\n5. prioritise suggested type from context analysis\n6. description must be imperative, lowercase, under 72 chars, no period\n7. add body only if significant complexity needs explanation\n8. use UK english spelling\n9. output ONLY the commit message, no explanations\n\ngenerate the conventional commit message now:");
     
     prompt
 }
@@ -218,11 +230,7 @@ fn analyze_commit_context(diff_info: &DiffInfo) -> String {
         context.push('\n');
     }
     
-    // detect appropriate scope based on file paths
-    let suggested_scope = detect_project_scope(diff_info);
-    if !suggested_scope.is_empty() {
-        context.push_str(&format!("suggested scope: {} (based on affected files)\n", suggested_scope));
-    }
+    // let AI determine scope based on the actual changes rather than predefined rules
     
     // suggest commit type based on improved analysis
     context.push_str("suggested commit type: ");
@@ -261,100 +269,7 @@ fn analyze_commit_context(diff_info: &DiffInfo) -> String {
     context
 }
 
-/// detect appropriate scope based on project structure and affected files with improved logic
-fn detect_project_scope(diff_info: &DiffInfo) -> String {
-    let mut scope_counts = std::collections::HashMap::new();
-    let mut has_actual_dependency_changes = false;
-    
-    for file in &diff_info.files {
-        let path = &file.path;
-        
-        // first check if this is ACTUALLY a dependency change
-        if path == "Cargo.toml" || path == "package.json" || path == "Cargo.lock" || path == "package-lock.json" {
-            // check if the diff content shows actual dependency changes
-            if file.diff_content.contains("dependencies") || 
-               file.diff_content.contains("version") ||
-               file.diff_content.contains("\"name\":") {
-                has_actual_dependency_changes = true;
-            }
-        }
-        
-        // detect scope based on directory structure and content (language-agnostic)
-        let scope = if path.contains("/api/") || path.contains("/controllers/") || path.contains("/services/") {
-            "api"
-        } else if path.contains("/ui/") || path.contains("/components/") || path.contains("/pages/") || 
-                  path.contains("/views/") || path.ends_with(".cshtml") || path.ends_with(".razor") {
-            "ui"
-        } else if path.contains("/models/") || path.contains("/entities/") || path.contains("/dto/") {
-            "models"
-        } else if path.contains("/auth/") || path.contains("/security/") || path.contains("/identity/") {
-            "auth"
-        } else if path.contains("/database/") || path.contains("/migrations/") || path.contains("/data/") {
-            "db"
-        } else if path.contains("/config/") || path.contains("/settings/") || file.file_type == crate::git::FileType::Config {
-            "config"
-        } else if path.ends_with(".css") || path.ends_with(".scss") || path.ends_with(".sass") || 
-                  path.ends_with(".less") || path.contains("/styles/") || path.contains("/css/") {
-            "styles"
-        } else if path.ends_with(".js") || path.ends_with(".ts") || path.ends_with(".jsx") || 
-                  path.ends_with(".tsx") || path.contains("/scripts/") || path.contains("/js/") {
-            "scripts"
-        } else if path.ends_with(".cs") && !path.contains("test") {
-            "core"
-        } else if file.file_type == crate::git::FileType::Test {
-            "test"
-        } else if file.file_type == crate::git::FileType::Documentation {
-            "docs"
-        } else if file.file_type == crate::git::FileType::Build && has_actual_dependency_changes {
-            "build"
-        } else if path.contains(".github/") || path.contains("ci/") || path.contains(".yml") {
-            "ci"
-        } else {
-            ""
-        };
-        
-        if !scope.is_empty() {
-            *scope_counts.entry(scope).or_insert(0) += 1;
-        }
-    }
-    
-    // special case: if we have dependency changes but also significant code changes,
-    // prioritize the code changes scope
-    let has_major_code_changes = diff_info.files.iter().any(|f| 
-        f.change_hints.contains(&crate::git::ChangeHint::MajorAddition) ||
-        f.change_hints.contains(&crate::git::ChangeHint::NewFeature) ||
-        f.change_hints.contains(&crate::git::ChangeHint::NewStruct) ||
-        f.change_hints.contains(&crate::git::ChangeHint::NewEnum)
-    );
-    
-    if has_major_code_changes && scope_counts.contains_key("build") {
-        scope_counts.remove("build"); // remove build scope when major code changes present
-    }
-    
-    // return the most common scope, or empty if mixed/unclear
-    if scope_counts.len() == 1 {
-        scope_counts.keys().next().unwrap().to_string()
-    } else if scope_counts.len() > 1 {
-        // prioritize certain scopes over others (updated for web/enterprise patterns)
-        let priority_order = ["api", "ui", "auth", "models", "db", "core", "scripts", "styles", "config", "test", "docs", "ci", "build"];
-        
-        for priority_scope in &priority_order {
-            if scope_counts.contains_key(priority_scope) {
-                let total_files = diff_info.files.len();
-                let scope_count = scope_counts[priority_scope];
-                
-                // use scope if it represents at least 40% of changes (relaxed from 50%)
-                if scope_count >= (total_files * 2) / 5 {
-                    return priority_scope.to_string();
-                }
-            }
-        }
-        
-        String::new() // mixed scopes, no clear winner
-    } else {
-        String::new()
-    }
-}
+
 
 // system prompt that guides the ai in generating conventional commit messages
 const SYSTEM_PROMPT: &str = r#"you are commitwizard, an expert at creating conventional commit messages for git commits.
@@ -382,10 +297,11 @@ STRICT TYPE RULES - use ONLY these types:
 - revert: reverts a previous commit
 
 STRICT SCOPE RULES:
-- scope must be specific to affected component/module
-- valid scopes: api, ui, auth, models, db, core, scripts, styles, config, test, docs, ci, build
-- use NO scope if changes affect multiple components
-- NEVER use generic scopes like "software", "app", "project", "code", "system"
+- scope must be a noun describing the section of codebase being changed
+- use contextual scopes based on actual changes: parser, auth, logger, api, etc.
+- use NO scope if changes affect multiple unrelated components  
+- scope should be specific and meaningful: "parser" not "code", "auth" not "security stuff"
+- avoid generic scopes like "app", "project", "system", "general"
 
 STRICT DESCRIPTION RULES:
 - max 72 characters
@@ -406,14 +322,103 @@ STRICT FOOTER RULES:
 - no ticket references unless explicitly in diff
 
 CRITICAL REQUIREMENTS:
-1. follow the context analysis suggestions for type and scope
-2. if scope is suggested, use it unless clearly inappropriate
-3. be precise - "enhance ai prompt analysis" not "improve things"
-4. prioritise suggested type over default assumptions
+1. follow the context analysis suggestions for type
+2. generate contextual scopes based on what code sections are actually changed
+3. be precise - "enhance prompt parsing" not "improve things"
+4. prioritise suggested type over default assumptions  
 5. no markdown formatting, backticks, or special characters
 6. UK english spelling only
 
 output ONLY the commit message, no explanations or additional text."#;
+
+/// normalize commit message format, converting [scope] to (scope)
+fn normalize_commit_format(msg: &str) -> String {
+    // Convert type[scope]: description to type(scope): description
+    if msg.contains('[') && msg.contains(']') && msg.contains(':') {
+        let parts: Vec<&str> = msg.splitn(2, ':').collect();
+        if parts.len() == 2 {
+            let type_scope = parts[0].trim();
+            let description = parts[1].trim();
+            
+            // Replace [scope] with (scope)
+            let normalized_type_scope = type_scope.replace('[', "(").replace(']', ")");
+            return format!("{}: {}", normalized_type_scope, description);
+        }
+    }
+    
+    msg.to_string()
+}
+
+/// extract commit message from AI response, handling code blocks and explanations
+fn extract_commit_message(response: &str) -> String {
+    // Look for commit message in code blocks (```...```)
+    let lines: Vec<&str> = response.lines().collect();
+    let mut in_code_block = false;
+    let mut commit_candidates = Vec::new();
+    
+    for line in lines {
+        let trimmed = line.trim();
+        
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            continue;
+        }
+        
+        if in_code_block && !trimmed.is_empty() {
+            // This could be our commit message
+            commit_candidates.push(trimmed.to_string());
+        }
+    }
+    
+    // Look for the best commit message candidate
+    for candidate in &commit_candidates {
+        // Check if it looks like a conventional commit
+        if is_likely_commit_message(candidate) {
+            return normalize_commit_format(candidate);
+        }
+    }
+    
+    // Fallback: look for lines that look like commit messages outside code blocks
+    for line in response.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && is_likely_commit_message(trimmed) {
+            return normalize_commit_format(trimmed);
+        }
+    }
+    
+    // Last resort: return the first non-empty line
+    let fallback = response.lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("feat: update")
+        .trim()
+        .to_string();
+    
+    // Normalize the format: convert [scope] to (scope)
+    normalize_commit_format(&fallback)
+}
+
+/// check if a line looks like a conventional commit message
+fn is_likely_commit_message(line: &str) -> bool {
+    let valid_types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
+    
+    // Check for type: description or type(scope): description or type[scope]: description pattern
+    if line.contains(':') {
+        let before_colon = line.split(':').next().unwrap_or("").trim();
+        
+        // Handle type(scope) or type[scope] pattern
+        let type_part = if before_colon.contains('(') {
+            before_colon.split('(').next().unwrap_or("").trim()
+        } else if before_colon.contains('[') {
+            before_colon.split('[').next().unwrap_or("").trim()
+        } else {
+            before_colon
+        };
+        
+        return valid_types.contains(&type_part);
+    }
+    
+    false
+}
 
 /// validate that the generated commit message follows conventional commits format
 fn validate_commit_message(msg: &str) -> Result<()> {
@@ -426,7 +431,6 @@ fn validate_commit_message(msg: &str) -> Result<()> {
     
     // check for valid conventional commit format
     let valid_types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
-    let valid_scopes = ["api", "ui", "auth", "models", "db", "core", "scripts", "styles", "config", "test", "docs", "ci", "build"];
     
     // regex to match: type(scope): description or type: description
     let has_scope = first_line.contains('(') && first_line.contains(')');
@@ -450,8 +454,11 @@ fn validate_commit_message(msg: &str) -> Result<()> {
         }
         
         let scope = scope_desc[0];
-        if !scope.is_empty() && !valid_scopes.contains(&scope) {
-            return Err(anyhow::anyhow!("invalid scope '{}', must be one of: {}", scope, valid_scopes.join(", ")));
+        if !scope.is_empty() {
+            // Basic scope validation: should be a noun (alphanumeric, no spaces)
+            if scope.contains(' ') || !scope.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                return Err(anyhow::anyhow!("invalid scope '{}', must be a noun (alphanumeric, hyphens, or underscores only)", scope));
+            }
         }
         
         let description = scope_desc[1];
@@ -495,9 +502,18 @@ fn validate_description(description: &str) -> Result<()> {
         return Err(anyhow::anyhow!("description should start with lowercase letter"));
     }
     
-    // check for imperative mood (basic check for common non-imperative patterns)
-    if description.ends_with("ed") || description.ends_with("ing") {
-        return Err(anyhow::anyhow!("description should use imperative mood (e.g., 'add' not 'added' or 'adding')"));
+    // check for imperative mood (basic check for common non-imperative patterns in first word only)
+    let words: Vec<&str> = description.split_whitespace().collect();
+    if let Some(first_word) = words.first() {
+        // Check if first word looks like past tense or gerund (which are non-imperative)
+        if first_word.ends_with("ed") || (first_word.ends_with("ing") && first_word.len() > 4) {
+            // Common non-imperative patterns to avoid
+            let non_imperative = ["added", "removed", "deleted", "created", "updated", "modified", 
+                                "fixing", "adding", "removing", "creating", "updating", "modifying"];
+            if non_imperative.contains(first_word) {
+                return Err(anyhow::anyhow!("description should use imperative mood (e.g., 'add' not 'added' or 'adding')"));
+            }
+        }
     }
     
     Ok(())
