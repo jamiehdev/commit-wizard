@@ -67,7 +67,10 @@ commit-wizard
 
 that's it! commit wizard will:
 - analyse your staged changes (or unstaged if nothing is staged)
-- generate a conventional commit message using AI
+- detect patterns across 15+ change types (new features, refactoring, api changes, etc.)
+- automatically select the optimal ai model based on complexity
+- send meaningful code changes to ai (filtering out noise)
+- generate conventional commit messages with proper multi-line bodies for complex changes
 - let you review, edit, or regenerate the message
 - commit your changes with the perfect message
 
@@ -79,14 +82,17 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 
 | feature | description |
 |---------|-------------|
-| **smart analysis** | detects file types, change patterns, and semantic meaning of your changes. |
-| **conventional commits** | generates perfectly formatted conventional commit messages. |
-| **ai-generated scopes** | creates contextual scopes based on what code sections actually changed. |
+| **intelligent pattern detection** | analyses 15+ different change patterns including new features, refactoring, api changes, and cross-layer modifications. |
+| **smart model selection** | automatically chooses the optimal ai model based on commit complexity - fast models for simple changes, advanced models for complex ones. |
+| **context-aware diff analysis** | sends meaningful code changes to ai (up to 2000 lines) whilst filtering out auto-generated files, lock files, and binary content. |
+| **conventional commits** | generates perfectly formatted conventional commit messages following the 1.0 specification. |
+| **ai-generated scopes** | creates contextual scopes based on what code sections actually changed - no predefined lists. |
+| **multi-line commit bodies** | generates detailed bullet-point explanations for complex changes with proper capitalisation and uk spelling. |
 | **interactive workflow** | review, edit, regenerate, or commit with confidence. |
-| **debug mode** | see the full ai analysis and reasoning with `--debug`. |
+| **performance optimised** | cached regex patterns, efficient string matching, and smart analysis prioritisation. |
+| **debug mode** | see the full ai analysis, pattern detection, and model reasoning with `--debug`. |
 | **multiple providers** | supports openrouter, openai, deepseek, and other providers. |
-| **format validation** | ensures all messages follow conventional commits specification. |
-| **imperative mood** | automatically validates and suggests proper imperative descriptions. |
+| **format validation** | ensures all messages follow conventional commits specification with breaking change support (`!` syntax). |
 
 ---
 
@@ -125,15 +131,39 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 
 ### example output:
 
+**simple changes** get concise single-line messages:
 ```bash
 $ commit-wizard
 
-🧙 commit-wizard (core engine)
-ai-powered conventional commit message generator
+🧙 analysing commit changes...
+🧙 generating commit message with deepseek/deepseek-r1-0528:free...
 
 ✅ generated commit message:
 
-feat(auth): add jwt token validation middleware
+fix(parser): handle edge case in regex pattern matching
+
+? what would you like to do? ›
+❯ yes, commit this message
+  edit this message  
+  no, regenerate message
+```
+
+**complex changes** get detailed multi-line explanations:
+```bash
+$ commit-wizard
+
+🧙 analysing commit changes...
+🧙 generating commit message with anthropic/claude-3.5-sonnet...
+
+✅ generated commit message:
+
+feat(ai): implement intelligent commit analysis with pattern detection
+
+- Add CommitIntelligence struct with 15 distinct change pattern types
+- Implement smart model selection based on complexity scoring
+- Add context-aware diff filtering excluding auto-generated files
+- Integrate performance optimisations with cached regex patterns
+- Support multi-line commit bodies with proper uk spelling
 
 ? what would you like to do? ›
 ❯ yes, commit this message
@@ -237,7 +267,7 @@ commit wizard works with any openai-compatible api. popular choices:
 <details>
 <summary><strong>how accurate are the generated commit messages?</strong></summary>
 
-> commit wizard analyses your code changes semantically, detecting file types, change patterns, and the intent behind modifications. the ai generates contextual, meaningful commit messages that accurately reflect what actually changed.
+> commit wizard v1.1.0 brings significant accuracy improvements with intelligent pattern detection across 15+ change types, context-aware diff analysis that sends actual code content to ai (not just summaries), and smart filtering that excludes noise whilst preserving meaningful changes. the ai now sees exactly what you changed, leading to specific, descriptive commit messages.
 
 </details>
 
@@ -269,10 +299,12 @@ commit wizard works with any openai-compatible api. popular choices:
 <details>
 <summary><strong>does it work with large codebases?</strong></summary>
 
-> yes! commit wizard has built-in limits (configurable) to analyse only the most relevant changes:
-> - maximum file size: 100kb by default (configurable)
-> - maximum files: 10 by default (configurable)
-> - smart truncation of large diffs
+> absolutely! commit wizard v1.1.0 is optimised for large codebases with intelligent diff filtering:
+> - automatically excludes auto-generated files (lock files, node_modules, build artifacts)
+> - prioritises source code over tests, config, and documentation
+> - sends up to 2000 lines of meaningful changes to ai (perfect for modern 64k+ token models)
+> - smart file prioritisation ensures important changes get full context
+> - performance optimisations with cached patterns and efficient analysis
 
 </details>
 
