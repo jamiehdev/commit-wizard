@@ -126,8 +126,19 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 | `--max-files <NUM>` | `-f` | maximum number of files to analyse (default: 10) |
 | `--verbose` | `-v` | show detailed diff information |
 | `--yes` | `-y` | automatically commit when confirmed |
-| `--debug` | | show debug information including raw ai responses |
-| `--smart-model` | | use smart model selection: fast model for simple commits, thinking model for complex ones |
+| `--debug` | | show debug information including raw ai responses and model selection reasoning |
+| `--smart-model` | | enable intelligent model selection based on commit complexity |
+
+### model settings
+
+commit wizard includes an interactive model settings menu accessible during the commit process:
+
+- **change model** - browse and select from 20+ pre-configured models
+- **auto-complexity** - let commit wizard choose the optimal model automatically
+- **search models** - find specific models from the full openrouter catalogue
+- **save preferences** - persist your model choices to `~/.config/commit-wizard/config.toml`
+
+**access model settings:** during the commit workflow, select "change model settings" from the main menu.
 
 ### example output:
 
@@ -186,16 +197,29 @@ commit wizard uses environment variables for configuration. you can set these in
 
 ### model configuration
 
-the default model is `deepseek/deepseek-r1-0528:free`, which provides excellent code analysis capabilities. you can override this by setting the `OPENROUTER_MODEL` environment variable.
+commit wizard uses `deepseek/deepseek-r1-0528:free` as the default model, providing excellent code analysis at no cost. you can customise model selection through:
 
-#### popular model options:
+1. **environment variable:** `OPENROUTER_MODEL=your-preferred-model`
+2. **interactive menu:** accessible during the commit workflow
+3. **config file:** automatically saved to `~/.config/commit-wizard/config.toml`
+4. **smart selection:** use `--smart-model` for automatic complexity-based choice
 
-| provider | model | description |
-|----------|-------|-------------|
-| deepseek | `deepseek/deepseek-r1-0528:free` | latest free model with excellent code understanding |
-| openai | `gpt-4o-mini` | fast and cost-effective |
-| anthropic | `anthropic/claude-3.5-sonnet` | great reasoning capabilities |
-| meta | `meta-llama/llama-3.1-8b-instruct:free` | free option with good performance |
+#### pre-configured models:
+
+| tier | model | description | use case |
+|------|-------|-------------|----------|
+| **free** | `deepseek/deepseek-r1-0528:free` | thinking model with excellent code understanding | complex commits, default choice |
+| **free** | `deepseek/deepseek-chat-v3-0324:free` | fast model for quick analysis | simple commits, speed priority |
+| **free** | `meta-llama/llama-3.1-8b-instruct:free` | solid general performance | balanced free option |
+| **premium** | `anthropic/claude-3.5-sonnet` | superior reasoning and context | complex codebases, best quality |
+| **premium** | `openai/gpt-4o` | balanced performance and speed | general use, reliable choice |
+| **premium** | `openai/gpt-4o-mini` | cost-effective openai option | budget-conscious, frequent use |
+
+#### smart model selection
+
+when enabled with `--smart-model`, commit wizard automatically chooses:
+- **fast models** for simple changes (single files, small modifications)
+- **thinking models** for complex changes (multiple files, architectural changes, new features)
 
 ### example configurations
 
