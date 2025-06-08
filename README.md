@@ -140,48 +140,6 @@ commit wizard includes an interactive model settings menu accessible during the 
 
 **access model settings:** during the commit workflow, select "change model settings" from the main menu.
 
-### example output:
-
-**simple changes** get concise single-line messages:
-```bash
-$ commit-wizard
-
-🧙 analysing commit changes...
-🧙 generating commit message with deepseek/deepseek-r1-0528:free...
-
-✅ generated commit message:
-
-fix(parser): handle edge case in regex pattern matching
-
-? what would you like to do? ›
-❯ yes, commit this message
-  edit this message  
-  no, regenerate message
-```
-
-**complex changes** get detailed multi-line explanations:
-```bash
-$ commit-wizard
-
-🧙 analysing commit changes...
-🧙 generating commit message with anthropic/claude-3.5-sonnet...
-
-✅ generated commit message:
-
-feat(ai): implement intelligent commit analysis with pattern detection
-
-- Add CommitIntelligence struct with 15 distinct change pattern types
-- Implement smart model selection based on complexity scoring
-- Add context-aware diff filtering excluding auto-generated files
-- Integrate performance optimisations with cached regex patterns
-- Support multi-line commit bodies with proper uk spelling
-
-? what would you like to do? ›
-❯ yes, commit this message
-  edit this message  
-  no, regenerate message
-```
-
 ---
 
 ## configuration guide
