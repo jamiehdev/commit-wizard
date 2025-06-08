@@ -25,16 +25,29 @@ echo "🔄 Syncing all packages to version $NEW_VERSION..."
 echo "📝 Updating workspace Cargo.toml..."
 sed -i.bak "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
 
-# Update package.json version
-echo "📝 Updating package.json..."
+# Update main package.json version
+echo "📝 Updating main package.json..."
 sed -i.bak "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" commit-wizard-napi/package.json
 
-# Update optional dependencies in package.json
-echo "📝 Updating optional dependencies..."
-sed -i.bak "s/\"@jamiehdev\/commit-wizard-[^\"]*\": \"[^\"]*\"/\"@jamiehdev\/commit-wizard-linux-x64-gnu\": \"$NEW_VERSION\"/g" commit-wizard-napi/package.json
+# Update optional dependencies in main package.json
+echo "📝 Updating optional dependencies in main package.json..."
+sed -i.bak "s/\"@jamiehdev\/commit-wizard-linux-x64-gnu\": \"[^\"]*\"/\"@jamiehdev\/commit-wizard-linux-x64-gnu\": \"$NEW_VERSION\"/g" commit-wizard-napi/package.json
 sed -i.bak "s/\"@jamiehdev\/commit-wizard-darwin-x64\": \"[^\"]*\"/\"@jamiehdev\/commit-wizard-darwin-x64\": \"$NEW_VERSION\"/g" commit-wizard-napi/package.json
 sed -i.bak "s/\"@jamiehdev\/commit-wizard-darwin-arm64\": \"[^\"]*\"/\"@jamiehdev\/commit-wizard-darwin-arm64\": \"$NEW_VERSION\"/g" commit-wizard-napi/package.json
 sed -i.bak "s/\"@jamiehdev\/commit-wizard-win32-x64-msvc\": \"[^\"]*\"/\"@jamiehdev\/commit-wizard-win32-x64-msvc\": \"$NEW_VERSION\"/g" commit-wizard-napi/package.json
+
+# Update npm platform-specific package.json files
+echo "📝 Updating platform-specific package.json files..."
+for platform_dir in commit-wizard-napi/npm/*; do
+    if [ -d "$platform_dir" ]; then
+        platform_name=$(basename "$platform_dir")
+        package_json="$platform_dir/package.json"
+        if [ -f "$package_json" ]; then
+            echo "  📝 Updating $package_json..."
+            sed -i.bak "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" "$package_json"
+        fi
+    fi
+done
 
 # Clean up backup files
 find . -name "*.bak" -delete

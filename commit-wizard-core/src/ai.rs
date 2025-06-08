@@ -185,10 +185,19 @@ pub async fn generate_conventional_commit_with_model(
                 break; 
             }
             println!("  └─ {}: +{} -{} lines", file.path, file.added_lines, file.removed_lines);
-            let changes = analyse_file_changes_for_prompt(&file.diff_content);
-            if !changes.is_empty() {
-                for change in &changes {
-                    println!("     • {}", change);
+            
+            // show what diff content is being sent to AI
+            let lines_to_include = if file.added_lines + file.removed_lines > 100 { 15 } else { 20 };
+            let meaningful_diff = extract_meaningful_diff_lines(&file.diff_content, lines_to_include);
+            if !meaningful_diff.is_empty() {
+                println!("     📝 Diff sent to AI ({} lines):", meaningful_diff.lines().count());
+                for (j, line) in meaningful_diff.lines().enumerate() {
+                    if j < 3 { // show first 3 lines as sample
+                        println!("       {}", line);
+                    } else if j == 3 {
+                        println!("       ... ({} more lines sent to AI)", meaningful_diff.lines().count() - 3);
+                        break;
+                    }
                 }
             }
         }
@@ -1005,33 +1014,43 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         prompt.push_str("\n");
     }
     
-    // actual diff summary with emphasis on code changes
-    prompt.push_str("📁 DETAILED CHANGE ANALYSIS:\n");
+    // send actual diff content for AI to understand
+    prompt.push_str("📁 ACTUAL CODE CHANGES:\n");
     prompt.push_str(&diff_info.summary);
     prompt.push_str("\n");
     
-    // add specific file-level insights (limited for performance)
+    // include actual diff snippets for important files only
     if !diff_info.files.is_empty() {
-        prompt.push_str("\n🔍 SPECIFIC CHANGES PER FILE:\n");
-        for (i, file) in diff_info.files.iter().enumerate() {
-            if i >= 3 { break; } // limit to 3 files for speed and brevity
-            prompt.push_str(&format!("{}:\n", file.path));
+        prompt.push_str("\n🔍 DIFF CONTENT (for context):\n");
+        
+        // filter and prioritise files
+        let important_files = get_important_files_for_diff(&diff_info.files);
+        let mut total_diff_lines = 0;
+        const MAX_TOTAL_DIFF_LINES: usize = 2000; // generous limit for modern LLMs with 64K+ context
+        
+        for (i, file) in important_files.iter().enumerate() {
+            if i >= 15 || total_diff_lines >= MAX_TOTAL_DIFF_LINES { 
+                break; 
+            }
             
-            // analyse specific changes in this file (only for smaller files)
-            if file.diff_content.len() < 10000 { // skip analysis for very large files
-                let file_changes = analyse_file_changes_for_prompt(&file.diff_content);
-                if !file_changes.is_empty() {
-                    prompt.push_str(&format!("  - {}\n", file_changes.join("\n  - ")));
-                } else {
-                    prompt.push_str(&format!("  - {} lines added, {} removed\n", file.added_lines, file.removed_lines));
-                }
+            prompt.push_str(&format!("\n--- {} (+{} -{}) ---\n", file.path, file.added_lines, file.removed_lines));
+            
+            // dynamic line limits based on file importance and size
+            let lines_to_include = calculate_diff_lines_for_file(file, total_diff_lines, MAX_TOTAL_DIFF_LINES);
+            let meaningful_diff = extract_meaningful_diff_lines(&file.diff_content, lines_to_include);
+            
+            if !meaningful_diff.is_empty() {
+                prompt.push_str(&meaningful_diff);
+                prompt.push_str("\n");
+                total_diff_lines += meaningful_diff.lines().count();
             } else {
-                prompt.push_str(&format!("  - {} lines added, {} removed (large file)\n", file.added_lines, file.removed_lines));
+                prompt.push_str(&format!("Large diff with {} additions, {} deletions\n", file.added_lines, file.removed_lines));
             }
         }
         
-        if diff_info.files.len() > 3 {
-            prompt.push_str(&format!("... and {} more files\n", diff_info.files.len() - 3));
+        let skipped_files = diff_info.files.len() - important_files.len();
+        if skipped_files > 0 {
+            prompt.push_str(&format!("\n... and {} more files (auto-generated/less important)\n", skipped_files));
         }
     }
     prompt.push_str("\n");
@@ -1050,19 +1069,19 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         if has_new_files && has_features {
             prompt.push_str("```\n");
             prompt.push_str("feat(core): implement intelligent commit message generation\n\n");
-            prompt.push_str("- add generate_conventional_commit and analyse_commit_intelligence functions\n");
-            prompt.push_str("- implement PatternType enum with 15 distinct change patterns\n");
-            prompt.push_str("- add ai.rs module with pattern detection algorithms\n");
-            prompt.push_str("- integrate regex dependency for content analysis\n");
-            prompt.push_str("- enhance diff parsing to extract meaningful code changes\n");
+            prompt.push_str("- Add generate_conventional_commit and analyse_commit_intelligence functions\n");
+            prompt.push_str("- Implement PatternType enum with 15 distinct change patterns\n");
+            prompt.push_str("- Add ai.rs module with pattern detection algorithms\n");
+            prompt.push_str("- Integrate regex dependency for content analysis\n");
+            prompt.push_str("- Enhance diff parsing to extract meaningful code changes\n");
             prompt.push_str("\nBREAKING CHANGE: api interface changed requiring updated imports\n");
             prompt.push_str("```\n\n");
         } else if has_refactoring {
             prompt.push_str("```\n");
             prompt.push_str("refactor(parser): restructure diff analysis for better accuracy\n\n");
-            prompt.push_str("- extract pattern detection into separate functions\n");
-            prompt.push_str("- improve code organisation and readability\n");
-            prompt.push_str("- consolidate duplicate analysis logic\n");
+            prompt.push_str("- Extract pattern detection into separate functions\n");
+            prompt.push_str("- Improve code organisation and readability\n");
+            prompt.push_str("- Consolidate duplicate analysis logic\n");
             prompt.push_str("```\n\n");
         } else {
             prompt.push_str("```\n");
@@ -1071,9 +1090,9 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
                 intelligence.scope_hint.as_deref().unwrap_or("scope"),
                 "describe the main change briefly"
             ));
-            prompt.push_str("- explain first major change\n");
-            prompt.push_str("- describe second significant modification\n");
-            prompt.push_str("- note any important technical details\n");
+            prompt.push_str("- Explain first major change\n");
+            prompt.push_str("- Describe second significant modification\n");
+            prompt.push_str("- Note any important technical details\n");
             prompt.push_str("```\n\n");
         }
     } else {
@@ -1110,13 +1129,15 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         prompt.push_str("1. create a commit with type, optional scope, and description (under 72 chars)\n");
         prompt.push_str("2. add a blank line\n");
         prompt.push_str("3. add a body with bullet points explaining the key changes\n");
-        prompt.push_str("4. USE SPECIFIC NAMES: mention actual function names, types, and files from the analysis\n");
-        prompt.push_str("5. ORGANISE BULLETS: major changes first, then features, then minor updates\n");
-        prompt.push_str("6. BE SPECIFIC: avoid generic terms like 'update dependencies' - say what was updated\n");
-        prompt.push_str("7. FOLLOW CONVENTIONAL COMMITS 1.0: use ! for breaking changes or BREAKING CHANGE: footer\n");
-        prompt.push_str("8. FOOTERS: use BREAKING CHANGE: (all caps) for breaking changes in footer\n");
-        prompt.push_str("9. focus on WHAT changed and WHY, not implementation details\n");
-        prompt.push_str("10. use UK english spelling (optimisation, behaviour, etc.)\n");
+        prompt.push_str("4. ANALYSE THE DIFF: look at actual code changes to understand what functions/types were added\n");
+        prompt.push_str("5. BE SPECIFIC: mention actual function names, modules, and purposes from the diff content\n");
+        prompt.push_str("6. ORGANISE BULLETS: major changes first, then features, then minor updates\n");
+        prompt.push_str("7. NO GENERIC COUNTS: instead of '15 functions', say 'add analyse_commit_intelligence function for pattern detection'\n");
+        prompt.push_str("8. FOLLOW CONVENTIONAL COMMITS 1.0: use ! for breaking changes or BREAKING CHANGE: footer\n");
+        prompt.push_str("9. FOOTERS: use BREAKING CHANGE: (all caps) for breaking changes in footer\n");
+        prompt.push_str("10. CAPITALISATION: bullet points start with capital letter, header stays lowercase\n");
+        prompt.push_str("11. focus on WHAT changed and WHY, not implementation details\n");
+        prompt.push_str("12. use UK english spelling (optimisation, behaviour, etc.)\n");
     } else {
         prompt.push_str("1. create a single-line commit message\n");
         prompt.push_str("2. format: <type>(<scope>): <description>\n");
@@ -1128,6 +1149,238 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
     prompt.push_str("\ngenerate the commit message now:\n");
     
     prompt
+}
+
+/// get important files for diff context, excluding auto-generated and prioritising by importance
+fn get_important_files_for_diff(files: &[crate::git::ModifiedFile]) -> Vec<&crate::git::ModifiedFile> {
+    let mut important_files: Vec<&crate::git::ModifiedFile> = files.iter()
+        .filter(|f| !is_auto_generated_or_boring_file(&f.path))
+        .collect();
+    
+    // sort by importance (source code files first, then tests, then config)
+    important_files.sort_by(|a, b| {
+        let a_priority = get_file_priority(&a.path);
+        let b_priority = get_file_priority(&b.path);
+        a_priority.cmp(&b_priority)
+    });
+    
+    important_files
+}
+
+/// check if file should be excluded from diff (auto-generated, minified, etc.)
+fn is_auto_generated_or_boring_file(path: &str) -> bool {
+    let path_lower = path.to_lowercase();
+    let file_name = std::path::Path::new(path).file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    
+    // auto-generated files
+    if path_lower.contains("node_modules") || 
+       path_lower.contains("target/") ||
+       path_lower.contains("build/") ||
+       path_lower.contains("dist/") ||
+       path_lower.contains(".git/") ||
+       path_lower.contains("__pycache__") {
+        return true;
+    }
+    
+    // lock files and auto-generated manifests
+    if file_name.ends_with(".lock") ||
+       file_name.ends_with("-lock.json") ||
+       file_name == "package-lock.json" ||
+       file_name == "yarn.lock" ||
+       file_name == "cargo.lock" ||
+       file_name == "go.sum" ||
+       file_name == "poetry.lock" {
+        return true;
+    }
+    
+    // minified files
+    if file_name.contains(".min.") ||
+       file_name.ends_with(".min.js") ||
+       file_name.ends_with(".min.css") {
+        return true;
+    }
+    
+    // generated docs and assets
+    if path_lower.contains("/generated/") ||
+       path_lower.contains("/auto/") ||
+       path_lower.contains("/.generated") ||
+       file_name.starts_with("generated_") {
+        return true;
+    }
+    
+    // binary and media files
+    if file_name.ends_with(".png") ||
+       file_name.ends_with(".jpg") ||
+       file_name.ends_with(".jpeg") ||
+       file_name.ends_with(".gif") ||
+       file_name.ends_with(".ico") ||
+       file_name.ends_with(".pdf") ||
+       file_name.ends_with(".exe") ||
+       file_name.ends_with(".dll") ||
+       file_name.ends_with(".so") {
+        return true;
+    }
+    
+    false
+}
+
+/// get priority for file ordering (lower number = higher priority)
+fn get_file_priority(path: &str) -> u8 {
+    let path_lower = path.to_lowercase();
+    let file_name = std::path::Path::new(path).file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    
+    // highest priority: core source files
+    if path_lower.contains("/src/") && 
+       (file_name.ends_with(".rs") || file_name.ends_with(".ts") || 
+        file_name.ends_with(".js") || file_name.ends_with(".py") ||
+        file_name.ends_with(".go") || file_name.ends_with(".java") ||
+        file_name.ends_with(".cpp") || file_name.ends_with(".c")) {
+        return 1;
+    }
+    
+    // high priority: lib files and main modules
+    if file_name == "lib.rs" || file_name == "main.rs" || 
+       file_name == "index.ts" || file_name == "index.js" ||
+       file_name == "main.py" || file_name == "__init__.py" {
+        return 2;
+    }
+    
+    // medium priority: configuration files
+    if file_name.ends_with(".toml") || file_name.ends_with(".yaml") ||
+       file_name.ends_with(".yml") || file_name.ends_with(".json") ||
+       file_name == "package.json" || file_name == "cargo.toml" ||
+       file_name == "pyproject.toml" {
+        return 3;
+    }
+    
+    // medium-low priority: test files
+    if path_lower.contains("/test") || path_lower.contains("/spec") ||
+       file_name.contains("test") || file_name.contains("spec") {
+        return 4;
+    }
+    
+    // low priority: documentation
+    if file_name.ends_with(".md") || file_name.ends_with(".txt") ||
+       path_lower.contains("/docs/") || path_lower.contains("/doc/") {
+        return 5;
+    }
+    
+    // lowest priority: everything else
+    6
+}
+
+/// calculate how many diff lines to include for this file
+fn calculate_diff_lines_for_file(file: &crate::git::ModifiedFile, used_lines: usize, max_total: usize) -> usize {
+    let remaining_budget = max_total.saturating_sub(used_lines);
+    let file_priority = get_file_priority(&file.path);
+    
+    // allocate more lines to higher priority files (much more generous)
+    let base_allocation = match file_priority {
+        1 => 150, // core source files get lots of lines
+        2 => 100, // lib files
+        3 => 50,  // config files
+        4 => 30,  // test files
+        5 => 20,  // docs
+        _ => 10,  // everything else
+    };
+    
+    // but never exceed remaining budget
+    std::cmp::min(base_allocation, remaining_budget)
+}
+
+/// extract the most meaningful lines from a diff for AI context
+fn extract_meaningful_diff_lines(diff_content: &str, max_lines: usize) -> String {
+    let mut meaningful_lines = Vec::new();
+    let mut line_count = 0;
+    
+    for line in diff_content.lines() {
+        if line_count >= max_lines {
+            break;
+        }
+        
+        let trimmed = line.trim();
+        
+        // skip empty lines and boring changes
+        if trimmed.is_empty() || 
+           trimmed.starts_with("@@") ||
+           trimmed.starts_with("+++") ||
+           trimmed.starts_with("---") {
+            continue;
+        }
+        
+        // include all additions and important deletions
+        if line.starts_with('+') || line.starts_with('-') {
+            // prioritise function definitions, struct definitions, important logic
+            if is_important_line(trimmed) {
+                meaningful_lines.push(line.to_string());
+                line_count += 1;
+            } else if meaningful_lines.len() < (max_lines * 3) / 4 {
+                // include more context lines now that we have more budget
+                meaningful_lines.push(line.to_string());
+                line_count += 1;
+            }
+        }
+    }
+    
+    if meaningful_lines.is_empty() {
+        return String::new();
+    }
+    
+    // add truncation notice if we hit the limit
+    if line_count >= max_lines {
+        meaningful_lines.push("... (diff truncated for brevity)".to_string());
+    }
+    
+    meaningful_lines.join("\n")
+}
+
+/// check if a diff line contains important code changes
+fn is_important_line(line: &str) -> bool {
+    let line_clean = line.trim_start_matches(['+', '-']).trim();
+    
+    // function definitions
+    if line_clean.contains("fn ") || line_clean.contains("function ") || 
+       line_clean.contains("def ") || line_clean.contains("func ") {
+        return true;
+    }
+    
+    // type definitions
+    if line_clean.contains("struct ") || line_clean.contains("enum ") || 
+       line_clean.contains("class ") || line_clean.contains("interface ") ||
+       line_clean.contains("type ") {
+        return true;
+    }
+    
+    // imports/exports (show dependencies)
+    if line_clean.starts_with("use ") || line_clean.starts_with("import ") ||
+       line_clean.starts_with("from ") || line_clean.starts_with("export ") {
+        return true;
+    }
+    
+    // pub declarations (public API changes)
+    if line_clean.starts_with("pub ") {
+        return true;
+    }
+    
+    // constants and configuration
+    if line_clean.contains("const ") || line_clean.contains("static ") ||
+       line_clean.contains("config") || line_clean.contains("Config") {
+        return true;
+    }
+    
+    // comments explaining what's happening
+    if line_clean.starts_with("//") || line_clean.starts_with("#") ||
+       line_clean.starts_with("/*") {
+        return true;
+    }
+    
+    false
 }
 
 /// analyse file changes for detailed prompt context
@@ -1339,13 +1592,13 @@ fn normalize_commit_format(msg: &str) -> String {
 
 /// extract commit message from ai response
 fn extract_commit_message(response: &str) -> String {
-    // look for commit message in code blocks
     let lines: Vec<&str> = response.lines().collect();
-    let mut in_code_block = false;
     let mut commit_lines = Vec::new();
     let mut found_commit_start = false;
+    let mut in_code_block = false;
     
-    for line in lines {
+    // first try: look for commit message in code blocks
+    for line in lines.iter() {
         let trimmed = line.trim();
         
         if trimmed.starts_with("```") {
@@ -1368,10 +1621,7 @@ fn extract_commit_message(response: &str) -> String {
                     break;
                 }
                 
-                // BREAKING CHANGE: footer is valid conventional commit content
-                // Don't break on it, include it
-                
-                // we're in a commit message, collect all lines
+                // collect all lines (including BREAKING CHANGE: footers)
                 if trimmed.is_empty() {
                     commit_lines.push("".to_string()); // preserve blank lines
                 } else {
@@ -1382,6 +1632,38 @@ fn extract_commit_message(response: &str) -> String {
     }
     
     // if we found a multi-line commit in code blocks, return it
+    if !commit_lines.is_empty() {
+        let full_commit = commit_lines.join("\n");
+        return normalize_commit_format(&clean_commit_message(&full_commit));
+    }
+    
+    // second try: look for commit message directly in response (no code blocks)
+    commit_lines.clear();
+    found_commit_start = false;
+    
+    for line in lines.iter() {
+        let trimmed = line.trim();
+        
+        if !found_commit_start && is_likely_commit_message(trimmed) {
+            found_commit_start = true;
+            commit_lines.push(trimmed.to_string());
+        } else if found_commit_start {
+            // stop if we hit non-conventional commit content
+            if trimmed.starts_with("Breaking changes:") || 
+               trimmed.starts_with("Note:") {
+                break;
+            }
+            
+            // collect all lines until we hit something that looks like explanation
+            if trimmed.is_empty() {
+                commit_lines.push("".to_string()); // preserve blank lines
+            } else {
+                commit_lines.push(trimmed.to_string());
+            }
+        }
+    }
+    
+    // if we found a multi-line commit, return it
     if !commit_lines.is_empty() {
         let full_commit = commit_lines.join("\n");
         return normalize_commit_format(&clean_commit_message(&full_commit));
@@ -1452,7 +1734,7 @@ fn is_likely_commit_message(line: &str) -> bool {
     if line.contains(':') {
         let before_colon = line.split(':').next().unwrap_or("").trim();
         
-        // handle type(scope) or type[scope] pattern
+        // handle type(scope) or type[scope] pattern, and type! for breaking changes
         let type_part = if before_colon.contains('(') {
             before_colon.split('(').next().unwrap_or("").trim()
         } else if before_colon.contains('[') {
@@ -1460,6 +1742,9 @@ fn is_likely_commit_message(line: &str) -> bool {
         } else {
             before_colon
         };
+        
+        // remove ! for breaking changes to get the base type
+        let type_part = type_part.trim_end_matches('!');
         
         return valid_types.contains(&type_part);
     }
@@ -1480,23 +1765,30 @@ fn validate_commit_message(msg: &str) -> Result<()> {
     let valid_types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
     
     let has_scope = first_line.contains('(') && first_line.contains(')');
+    let has_breaking_change = first_line.contains('!');
     
     if has_scope {
-        // format: type(scope): description
+        // format: type(scope): description or type(scope)!: description
         let parts: Vec<&str> = first_line.splitn(2, '(').collect();
         if parts.len() != 2 {
             return Err(anyhow::anyhow!("invalid format: missing opening parenthesis"));
         }
         
-        let type_part = parts[0];
+        let type_part = parts[0].trim_end_matches('!'); // handle type! syntax
         if !valid_types.contains(&type_part) {
             return Err(anyhow::anyhow!("invalid type '{}', must be one of: {}", type_part, valid_types.join(", ")));
         }
         
         let rest = parts[1];
-        let scope_desc: Vec<&str> = rest.splitn(2, "): ").collect();
+        // handle both "): " and ")!: " patterns
+        let scope_desc: Vec<&str> = if rest.contains(")!: ") {
+            rest.splitn(2, ")!: ").collect()
+        } else {
+            rest.splitn(2, "): ").collect()
+        };
+        
         if scope_desc.len() != 2 {
-            return Err(anyhow::anyhow!("invalid format: expected 'type(scope): description'"));
+            return Err(anyhow::anyhow!("invalid format: expected 'type(scope): description' or 'type(scope)!: description'"));
         }
         
         let scope = scope_desc[0];
@@ -1510,13 +1802,18 @@ fn validate_commit_message(msg: &str) -> Result<()> {
         validate_description(description)?;
         
     } else {
-        // format: type: description
-        let parts: Vec<&str> = first_line.splitn(2, ": ").collect();
+        // format: type: description or type!: description
+        let parts: Vec<&str> = if first_line.contains("!: ") {
+            first_line.splitn(2, "!: ").collect()
+        } else {
+            first_line.splitn(2, ": ").collect()
+        };
+        
         if parts.len() != 2 {
-            return Err(anyhow::anyhow!("invalid format: expected 'type: description' or 'type(scope): description'"));
+            return Err(anyhow::anyhow!("invalid format: expected 'type: description', 'type!: description', or 'type(scope): description'"));
         }
         
-        let type_part = parts[0];
+        let type_part = parts[0].trim_end_matches('!'); // handle type! syntax
         if !valid_types.contains(&type_part) {
             return Err(anyhow::anyhow!("invalid type '{}', must be one of: {}", type_part, valid_types.join(", ")));
         }
@@ -1728,7 +2025,7 @@ STRICT DESCRIPTION RULES:
 STRICT BODY RULES (if needed):
 - separated by blank line from description
 - use hyphens (-) for bullet points
-- capitalise first word of each bullet point
+- CAPITALISE first word of each bullet point (e.g., "Add new feature", "Implement function")
 - explain WHY the change was made
 - wrap at 72 characters per line
 
