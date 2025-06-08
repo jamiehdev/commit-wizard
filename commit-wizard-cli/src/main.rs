@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     // if not auto-committing (--yes was not used), display the command to use.
     // the core function also prints this, but this is a good place for CLI-specific final instructions.
-    if !commit_was_performed { // check if commit was performed by the core library
+    if !commit_was_performed && !final_commit_message.is_empty() { // only show instructions if there is a commit message
         println!("\n{}", style("✨ CLI: ready to commit! ✨").green().bold());
         println!("{}", style("run this command from your terminal:").cyan());
         let git_command = format!("git commit -m \"{}\"", final_commit_message.replace("\"", "\\\""));

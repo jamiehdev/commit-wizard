@@ -121,6 +121,7 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 | `--verbose` | `-v` | show detailed diff information |
 | `--yes` | `-y` | automatically commit when confirmed |
 | `--debug` | | show debug information including raw ai responses |
+| `--smart-model` | | use smart model selection: fast model for simple commits, thinking model for complex ones |
 
 ### example output:
 

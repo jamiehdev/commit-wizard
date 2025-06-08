@@ -124,7 +124,7 @@ pub fn get_diff_info(
                             removed_lines: 0,
                             diff_content: format!("+{}", content),
                             file_type: classify_file_type(path_str),
-                            change_hints: analyze_change_hints(&content, true),
+                            change_hints: analyse_change_hints(&content, true),
                         });
                         
                         // limit number of files
@@ -169,12 +169,99 @@ pub fn get_diff_info(
         if total_deletions == 1 { "" } else { "s" }
     );
     
-    // generate file list for summary
-    let file_list: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
-    summary.push_str("\nmodified files:\n");
-    summary.push_str(&file_list.join("\n"));
+    // generate detailed file breakdown for summary
+    summary.push_str("\n\nfile breakdown:\n");
+    for file in &files {
+        let change_type = if file.removed_lines == 0 && file.added_lines > 5 {
+            " (new file)"
+        } else if file.added_lines > file.removed_lines * 2 {
+            " (major additions)"
+        } else if file.removed_lines > file.added_lines * 2 {
+            " (major deletions)"
+        } else {
+            " (modified)"
+        };
+        
+        summary.push_str(&format!(
+            "  {} (+{}, -{}){}",
+            file.path, file.added_lines, file.removed_lines, change_type
+        ));
+        
+        // add specific code changes if available
+        if !file.diff_content.is_empty() {
+            let key_changes = extract_key_changes(&file.diff_content);
+            if !key_changes.is_empty() {
+                summary.push_str(&format!("\n    key changes: {}", key_changes));
+            }
+        }
+        summary.push_str("\n");
+    }
     
     Ok(DiffInfo { files, summary })
+}
+
+/// extract key changes from diff content to provide meaningful context
+fn extract_key_changes(diff_content: &str) -> String {
+    let mut changes = Vec::new();
+    let added_lines: Vec<&str> = diff_content.lines()
+        .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+        .map(|l| l.trim_start_matches('+').trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    
+    
+    // use simple string matching for much better performance instead of regex
+    for line in &added_lines {
+        let line_lower = line.to_lowercase();
+        
+        // check for function additions using fast string matching
+        if (line.contains("fn ") && (line.contains("pub ") || line.contains("async "))) ||
+           line.contains("function ") || line.contains("def ") {
+            // extract function name more efficiently
+            if let Some(fn_pos) = line.find("fn ").or(line.find("function ")).or(line.find("def ")) {
+                if let Some(name_start) = line[fn_pos..].find(' ') {
+                    if let Some(name_end) = line[fn_pos + name_start + 1..].find(|c: char| c == '(' || c.is_whitespace()) {
+                        let name = &line[fn_pos + name_start + 1..fn_pos + name_start + 1 + name_end];
+                        if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            changes.push(format!("add function {}", name));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // check for type additions using fast string matching
+        if line.contains("struct ") || line.contains("enum ") || line.contains("class ") || line.contains("interface ") {
+            changes.push("add type definition".to_string());
+        }
+        
+        // check for imports using fast string matching
+        if line_lower.contains("use ") || line_lower.contains("import ") || line_lower.contains("from ") {
+            changes.push("add dependencies".to_string());
+        }
+        
+        // check for configuration changes
+        if line.contains("config") || line.contains("setting") {
+            changes.push("modify configuration".to_string());
+        }
+        
+        // check for error handling
+        if line.contains("Error") || line.contains("Exception") || line.contains("Result") {
+            changes.push("improve error handling".to_string());
+        }
+        
+        // check for async/performance related
+        if line.contains("async") || line.contains("await") || line.contains("cache") {
+            changes.push("add async/performance features".to_string());
+        }
+    }
+    
+    // deduplicate and limit to most important changes
+    let mut unique_changes: Vec<String> = changes.into_iter().collect::<std::collections::HashSet<_>>().into_iter().collect();
+    unique_changes.sort();
+    unique_changes.truncate(3); // limit to top 3 changes
+    
+    unique_changes.join(", ")
 }
 
 /// check if there are any staged changes in the repository
@@ -338,9 +425,9 @@ fn process_diff(
         true
     })?;
     
-    // analyze change hints for each file after processing
+    // analyse change hints for each file after processing
     for file in files.iter_mut() {
-        file.change_hints = analyze_change_hints(&file.diff_content, false);
+        file.change_hints = analyse_change_hints(&file.diff_content, false);
     }
     
     Ok(())
@@ -409,7 +496,7 @@ fn classify_file_type(path: &str) -> FileType {
 }
 
 /// analyse change hints from diff content with improved semantic detection
-fn analyze_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint> {
+fn analyse_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint> {
     let mut hints = Vec::new();
     let content_lower = content.to_lowercase();
     
