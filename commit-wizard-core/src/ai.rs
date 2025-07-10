@@ -4,26 +4,9 @@ use std::env;
 use std::collections::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
-use regex::Regex;
-use std::sync::OnceLock;
+use tokio::time::sleep;
 use crate::git::{DiffInfo, ModifiedFile};
 use crate::Config;
-
-// cached regex patterns for performance
-static FUNCTION_REGEX: OnceLock<Regex> = OnceLock::new();
-static IMPORT_REGEX: OnceLock<Regex> = OnceLock::new();
-
-fn get_function_regex() -> &'static Regex {
-    FUNCTION_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)(pub\s+)?(async\s+)?(fn|function|def|class|struct|enum|interface|type)\s+(\w+)").unwrap()
-    })
-}
-
-fn get_import_regex() -> &'static Regex {
-    IMPORT_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)(use|import|from)\s+([^\s;]+)").unwrap()
-    })
-}
 
 // openrouter api structures
 #[derive(Serialize)]
@@ -242,45 +225,46 @@ pub async fn generate_conventional_commit_with_model(
             Err(e) => break Err(e),
         };
         
-        match response.choices.first() {
-            Some(choice) => {
-                let raw_response = &choice.message.content;
-                
-                if debug {
-                    println!("🐛 DEBUG: Raw API response:");
-                    println!("═══════════════════════════════════════");
-                    println!("{}", raw_response);
-                    println!("═══════════════════════════════════════");
-                    println!();
-                }
-                
-                let commit_msg = extract_commit_message(&raw_response);
-                let commit_msg = post_process_commit_message(&commit_msg);
-                
-                if debug {
-                    println!("🐛 DEBUG: Extracted and processed commit message:");
-                    println!("═══════════════════════════════════════");
-                    println!("'{}'", commit_msg);
-                    println!("═══════════════════════════════════════");
-                    println!();
-                }
-                
-                match validate_commit_message(&commit_msg) {
-                    Ok(()) => break Ok(commit_msg),
-                    Err(e) => {
-                        if e.to_string().contains("description too long") && retry_count < max_retries {
-                            retry_count += 1;
-                            if debug {
-                                println!("⚠️  description too long, retrying ({}/{})", retry_count, max_retries);
-                            }
-                            continue;
-                        } else {
-                            break Err(e);
-                        }
+        let raw_response = match response.choices.first() {
+            Some(choice) => choice.message.content.clone(),
+            None => {
+                eprintln!("Warning: Empty choices in response");
+                String::new()
+            }
+        };
+
+        if debug {
+            println!("🐛 DEBUG: Raw API response:");
+            println!("═══════════════════════════════════════");
+            println!("{}", raw_response);
+            println!("═══════════════════════════════════════");
+            println!();
+        }
+
+        let commit_msg = extract_commit_message(&raw_response);
+        let commit_msg = post_process_commit_message(&commit_msg);
+
+        if debug {
+            println!("🐛 DEBUG: Extracted and processed commit message:");
+            println!("═══════════════════════════════════════");
+            println!("'{}'", commit_msg);
+            println!("═══════════════════════════════════════");
+            println!();
+        }
+
+        match validate_commit_message(&commit_msg) {
+            Ok(()) => break Ok(commit_msg),
+            Err(e) => {
+                if e.to_string().contains("description too long") && retry_count < max_retries {
+                    retry_count += 1;
+                    if debug {
+                        println!("⚠️  description too long, retrying ({}/{})", retry_count, max_retries);
                     }
+                    continue;
+                } else {
+                    break Err(e);
                 }
-            },
-            None => break Err(anyhow::anyhow!("no response from openrouter api")),
+            }
         }
     };
     
@@ -290,37 +274,74 @@ pub async fn generate_conventional_commit_with_model(
 
 /// make api request to openrouter
 async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<OpenRouterResponse> {
-    let client = reqwest::Client::new();
-    
-    let response = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request)
-        .send()
-        .await
-        .context("failed to send request to openrouter api")?;
-    
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "unknown error".to_string());
-        
-        if status == 400 && error_text.to_lowercase().contains("model") {
-            return Err(anyhow::anyhow!(
-                "invalid model '{}'. use the model settings menu to select a different model", 
-                request.model
-            ));
-        } else {
-            return Err(anyhow::anyhow!("openrouter api error ({}): {}", status, error_text));
+    let max_retries = 3;
+    let mut retry_delay = Duration::from_secs(1);
+
+    for attempt in 0..max_retries {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
+            .build()?;
+
+        let response = client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let body = resp
+                        .json::<OpenRouterResponse>()
+                        .await
+                        .context("failed to parse openrouter api response")?;
+                    return Ok(body);
+                } else {
+                    let status = resp.status();
+                    let error_text = resp
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "unknown error".to_string());
+
+                    if status.is_server_error() || status == 429 {
+                        if attempt < max_retries - 1 {
+                            eprintln!(
+                                "Retryable error ({}): {}. Retrying in {:?}...",
+                                status,
+                                error_text,
+                                retry_delay
+                            );
+                            sleep(retry_delay).await;
+                            retry_delay *= 2;
+                            continue;
+                        }
+                    } else if status == 400 && error_text.to_lowercase().contains("model") {
+                        return Err(anyhow::anyhow!(
+                            "invalid model '{}'. use the model settings menu to select a different model",
+                            request.model
+                        ));
+                    }
+
+                    return Err(anyhow::anyhow!("openrouter api error ({}): {}", status, error_text));
+                }
+            }
+            Err(e) => {
+                if attempt < max_retries - 1 {
+                    eprintln!("Network error: {}. Retrying in {:?}...", e, retry_delay);
+                    sleep(retry_delay).await;
+                    retry_delay *= 2;
+                    continue;
+                } else {
+                    return Err(anyhow::anyhow!("failed to send request to openrouter api: {}", e));
+                }
+            }
         }
     }
-    
-    let response_body = response
-        .json::<OpenRouterResponse>()
-        .await
-        .context("failed to parse openrouter api response")?;
-    
-    Ok(response_body)
+
+    Err(anyhow::anyhow!("max retries exceeded for api request"))
 }
 
 /// analyse any commit and return clear intelligence
@@ -1383,133 +1404,6 @@ fn is_important_line(line: &str) -> bool {
     false
 }
 
-/// analyse file changes for detailed prompt context
-fn analyse_file_changes_for_prompt(diff_content: &str) -> Vec<String> {
-    let mut changes = Vec::new();
-    let added_lines: Vec<&str> = diff_content.lines()
-        .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
-        .map(|l| l.trim_start_matches('+').trim())
-        .filter(|l| !l.is_empty() && l.len() > 5) // filter out trivial changes
-        .collect();
-    
-    let removed_lines: Vec<&str> = diff_content.lines()
-        .filter(|l| l.starts_with('-') && !l.starts_with("---"))
-        .map(|l| l.trim_start_matches('-').trim())
-        .filter(|l| !l.is_empty() && l.len() > 5)
-        .collect();
-    
-    // detailed function/method analysis using cached regex
-    let function_regex = get_function_regex();
-    for line in &added_lines {
-        if let Some(captures) = function_regex.captures(line) {
-            if let Some(kind) = captures.get(3) {
-                if let Some(name) = captures.get(4) {
-                    let async_marker = if captures.get(2).is_some() { "async " } else { "" };
-                    changes.push(format!("add {}{}function {}", async_marker, kind.as_str(), name.as_str()));
-                }
-            }
-        }
-    }
-    
-    // detect api/route changes
-    let api_patterns = [
-        r#"@(Get|Post|Put|Delete|Patch)\("([^"]+)""#,
-        r#"(app|router)\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]"#,
-        r#"\[Http(Get|Post|Put|Delete)\]"#,
-    ];
-    
-    for line in &added_lines {
-        for pattern in &api_patterns {
-            if let Ok(regex) = regex::Regex::new(pattern) {
-                if let Some(captures) = regex.captures(line) {
-                    if captures.len() >= 3 {
-                        if let Some(route) = captures.get(captures.len() - 1) {
-                            changes.push(format!("add api endpoint {}", route.as_str()));
-                        }
-                    } else {
-                        changes.push("add api endpoint".to_string());
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    
-    // detect import/dependency changes using cached regex
-    let import_regex = get_import_regex();
-    let mut import_count = 0;
-    for line in &added_lines {
-        if import_regex.is_match(line) {
-            import_count += 1;
-        }
-    }
-    if import_count > 0 {
-        changes.push(format!("add {} new dependencies", import_count));
-    }
-    
-    // detect configuration changes
-    let config_indicators = ["config", "setting", "env", "const", "static"];
-    for line in &added_lines {
-        let line_lower = line.to_lowercase();
-        if config_indicators.iter().any(|&indicator| line_lower.contains(indicator)) {
-            changes.push("modify configuration values".to_string());
-            break;
-        }
-    }
-    
-    // detect test additions
-    if added_lines.iter().any(|line| {
-        let line_lower = line.to_lowercase();
-        line_lower.contains("test") || line_lower.contains("spec") || 
-        line_lower.contains("assert") || line_lower.contains("expect")
-    }) {
-        changes.push("add tests".to_string());
-    }
-    
-    // detect error handling improvements
-    let error_patterns = ["Result", "Error", "Exception", "try", "catch", "unwrap", "expect"];
-    for line in &added_lines {
-        if error_patterns.iter().any(|&pattern| line.contains(pattern)) {
-            changes.push("improve error handling".to_string());
-            break;
-        }
-    }
-    
-    // detect performance/async additions
-    let perf_patterns = ["async", "await", "cache", "optimize", "performance", "parallel"];
-    for line in &added_lines {
-        let line_lower = line.to_lowercase();
-        if perf_patterns.iter().any(|&pattern| line_lower.contains(pattern)) {
-            changes.push("add performance optimisations".to_string());
-            break;
-        }
-    }
-    
-    // analyse major refactoring (high add/remove ratio)
-    if removed_lines.len() > 10 && added_lines.len() > 10 {
-        let ratio = removed_lines.len() as f32 / added_lines.len() as f32;
-        if ratio > 0.7 && ratio < 1.3 {
-            changes.push("refactor existing implementation".to_string());
-        }
-    }
-    
-    // if no specific changes detected, provide general context
-    if changes.is_empty() && !added_lines.is_empty() {
-        if added_lines.len() > 20 {
-            changes.push("major code additions".to_string());
-        } else if added_lines.len() > 5 {
-            changes.push("code modifications".to_string());
-        }
-    }
-    
-    // deduplicate and limit
-    let mut unique_changes: Vec<String> = changes.into_iter().collect::<std::collections::HashSet<_>>().into_iter().collect();
-    unique_changes.sort();
-    unique_changes.truncate(4); // limit to top 4 changes per file
-    
-    unique_changes
-}
-
 fn format_pattern_type(pattern_type: &PatternType) -> &'static str {
     match pattern_type {
         PatternType::NewFilePattern => "new files",
@@ -1592,6 +1486,7 @@ fn normalize_commit_format(msg: &str) -> String {
 
 /// extract commit message from ai response
 fn extract_commit_message(response: &str) -> String {
+    let response = response.trim().trim_matches(|c: char| c == '"' || c == '`' || c == '*');
     let lines: Vec<&str> = response.lines().collect();
     let mut commit_lines = Vec::new();
     let mut found_commit_start = false;
@@ -1765,7 +1660,6 @@ fn validate_commit_message(msg: &str) -> Result<()> {
     let valid_types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
     
     let has_scope = first_line.contains('(') && first_line.contains(')');
-    let has_breaking_change = first_line.contains('!');
     
     if has_scope {
         // format: type(scope): description or type(scope)!: description

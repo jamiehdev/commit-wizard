@@ -13,7 +13,7 @@ pub use dialoguer::{theme::ColorfulTheme, Select}; // re-export for CLI/NAPI
 pub use dotenv::dotenv;
 pub use indicatif::{ProgressBar, ProgressStyle};
 pub use std::env;
-pub use std::process::Command as StdCommand; 
+pub use std::process::Command as StdCommand;
 pub use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -254,6 +254,16 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
 /// handles the entire commit generation process
 async fn run_generate_and_commit_flow(args: CoreCliArgs, config: &mut Config) -> Result<(String, bool)> {
     let repo_path = args.path.clone().unwrap_or_else(|| ".".to_string());
+
+    // validate git repository early for clearer errors
+    let repo = match git2::Repository::discover(&repo_path) {
+        Ok(r) => r,
+        Err(e) => return Err(anyhow::anyhow!("invalid git repository: {}", e)),
+    };
+
+    if repo.is_bare() {
+        return Err(anyhow::anyhow!("bare repositories not supported"));
+    }
     
     if args.smart_model {
         println!("{}", style("🤖 smart model selection enabled").green());
