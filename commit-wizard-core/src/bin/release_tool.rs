@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     // compute next version according to semver and conventional commits
     let branch = current_branch(&repo)?;
     let mut next_version = current_version.clone();
-    
+
     // if on a release branch and current version is prerelease, create stable version
     if branch.starts_with("release/") && !current_version.pre.is_empty() {
         next_version.pre = Prerelease::EMPTY;
@@ -133,10 +133,10 @@ fn read_workspace_version() -> Result<Version> {
 /// update versions in cargo workspace and node packages
 fn update_versions(ver: &Version) -> Result<()> {
     write_cargo_version(ver)?;
-    
+
     // use the sync script to propagate version to all package.json files
     run_version_sync_script()?;
-    
+
     Ok(())
 }
 
@@ -146,18 +146,16 @@ fn run_version_sync_script() -> Result<()> {
         .arg("commit-wizard-napi/scripts/sync-version.mjs")
         .output()
         .context("failed to run version sync script")?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!(
-            "version sync script failed: {}", stderr
-        ));
+        return Err(anyhow::anyhow!("version sync script failed: {}", stderr));
     }
-    
+
     // print the script output for visibility
     let stdout = String::from_utf8_lossy(&output.stdout);
     print!("{}", stdout);
-    
+
     Ok(())
 }
 
@@ -169,8 +167,6 @@ fn write_cargo_version(ver: &Version) -> Result<()> {
     fs::write(cargo_toml_path, new_content.as_bytes())?;
     Ok(())
 }
-
-
 
 /// prepend entries to changelog file
 fn prepend_changelog(commits: &[Commit], ver: &Version) -> Result<()> {
