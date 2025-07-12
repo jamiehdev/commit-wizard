@@ -76,5 +76,5 @@
     "@jamiehdev/commit-wizard-darwin-x64": "1.3.3",
     "@jamiehdev/commit-wizard-linux-x64-gnu": "1.3.3",
     "@jamiehdev/commit-wizard-win32-x64-msvc": "1.3.3"
-}
+  }
 }
