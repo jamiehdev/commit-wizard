@@ -22,25 +22,32 @@ fn main() -> Result<()> {
     let analysis = classify_commits(&commits);
 
     // compute next version according to semver and conventional commits
-    let mut next_version = current_version.clone();
-    if force_major || analysis.breaking {
-        next_version.major += 1;
-        next_version.minor = 0;
-        next_version.patch = 0;
-    } else if analysis.has_feat {
-        next_version.minor += 1;
-        next_version.patch = 0;
-    } else if analysis.has_fix {
-        next_version.patch += 1;
-    } else {
-        println!("no releasable changes detected");
-        exit(0);
-    }
-
-    // add prerelease metadata if not on main or release/*
     let branch = current_branch(&repo)?;
-    if branch != "main" && !branch.starts_with("release/") {
-        next_version.pre = Prerelease::new("beta")?;
+    let mut next_version = current_version.clone();
+    
+    // if on a release branch and current version is prerelease, create stable version
+    if branch.starts_with("release/") && !current_version.pre.is_empty() {
+        next_version.pre = Prerelease::EMPTY;
+    } else {
+        // normal version bumping logic
+        if force_major || analysis.breaking {
+            next_version.major += 1;
+            next_version.minor = 0;
+            next_version.patch = 0;
+        } else if analysis.has_feat {
+            next_version.minor += 1;
+            next_version.patch = 0;
+        } else if analysis.has_fix {
+            next_version.patch += 1;
+        } else {
+            println!("no releasable changes detected");
+            exit(0);
+        }
+
+        // add prerelease metadata if not on main or release/*
+        if branch != "main" && !branch.starts_with("release/") {
+            next_version.pre = Prerelease::new("beta")?;
+        }
     }
 
     if dry_run {
@@ -117,7 +124,7 @@ fn commits_since_last_tag(repo: &Repository) -> Result<Vec<Commit>> {
 /// read the workspace version from the root cargo.toml
 fn read_workspace_version() -> Result<Version> {
     let content = fs::read_to_string("Cargo.toml")?;
-    let re = Regex::new(r#"version\s*=\s*"(\d+\.\d+\.\d+)""#).unwrap();
+    let re = Regex::new(r#"version\s*=\s*"([^"]+)""#).unwrap();
     let caps = re
         .captures(&content)
         .context("cannot find version in Cargo.toml")?;
@@ -144,7 +151,7 @@ fn update_versions(ver: &Version) -> Result<()> {
 fn write_cargo_version(ver: &Version) -> Result<()> {
     let cargo_toml_path = "Cargo.toml";
     let content = fs::read_to_string(cargo_toml_path)?;
-    let re = Regex::new(r#"version\s*=\s*"(\d+\.\d+\.\d+)""#).unwrap();
+    let re = Regex::new(r#"version\s*=\s*"([^"]+)""#).unwrap();
     let new_content = re.replace(&content, format!("version = \"{}\"", ver));
     fs::write(cargo_toml_path, new_content.as_bytes())?;
     Ok(())
@@ -155,7 +162,7 @@ fn write_package_json_version(path: &Path, ver: &Version) -> Result<()> {
         return Ok(()); // nothing to do
     }
     let text = fs::read_to_string(path)?;
-    let re = Regex::new(r#"version":\s*"(\d+\.\d+\.\d+)"#).unwrap();
+    let re = Regex::new(r#""version":\s*"([^"]+)""#).unwrap();
     let updated = re.replace(&text, format!("\"version\": \"{}\"", ver));
     fs::write(path, updated.as_bytes())?;
     Ok(())
