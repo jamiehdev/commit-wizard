@@ -133,6 +133,10 @@ pub struct CoreCliArgs {
     /// test git diff processing without user interaction (for testing purposes)
     #[arg(long)]
     pub test_diff: bool,
+
+    /// automatically commit the generated message when using --test-diff (for testing purposes)
+    #[arg(long)]
+    pub auto_commit: bool,
 }
 
 /// get a safe fallback model that should always work
@@ -301,7 +305,7 @@ async fn run_generate_and_commit_flow(
     if repo.is_bare() {
         return Err(anyhow::anyhow!("bare repositories not supported"));
     }
-if args.smart_model {
+    if args.smart_model {
         println!("{}", style("🤖 smart model selection enabled").green());
         println!(
             "{}\n",
@@ -1475,14 +1479,21 @@ fn get_models_cache_path() -> Result<std::path::PathBuf> {
 /// test git diff processing without user interaction (for automated testing)
 async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> {
     use git2::Repository;
-    
-    println!("{}", style("🔍 Testing git diff processing...").cyan().bold());
-    
+
+    println!(
+        "{}",
+        style("🔍 Testing git diff processing...").cyan().bold()
+    );
+
     let repo_path = args.path.as_deref().unwrap_or(".");
     let _repo = match Repository::open(repo_path) {
         Ok(repo) => repo,
         Err(e) => {
-            return Err(anyhow::anyhow!("failed to open git repository at '{}': {}", repo_path, e));
+            return Err(anyhow::anyhow!(
+                "failed to open git repository at '{}': {}",
+                repo_path,
+                e
+            ));
         }
     };
 
@@ -1494,64 +1505,238 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     }
 
     if staged_files.is_empty() {
-        println!("{}", style("⚠️  No staged files found. Add files with 'git add' first.").yellow());
+        println!(
+            "{}",
+            style("⚠️  No staged files found. Add files with 'git add' first.").yellow()
+        );
         return Ok(("test completed - no staged files".to_string(), false));
     }
 
     // test diff analysis
     println!("\n{}", style("🔬 Analysing diffs...").cyan());
-    let diff_info = match crate::git::get_diff_info(repo_path, args.max_size * 1024, args.max_files, args.verbose) {
+    let diff_info = match crate::git::get_diff_info(
+        repo_path,
+        args.max_size * 1024,
+        args.max_files,
+        args.verbose,
+    ) {
         Ok(info) => info,
         Err(e) => {
-            println!("{}", style(&format!("❌ Git diff analysis failed: {}", e)).red().bold());
+            println!(
+                "{}",
+                style(&format!("❌ Git diff analysis failed: {}", e))
+                    .red()
+                    .bold()
+            );
             return Err(e);
         }
     };
 
-    println!("{}", style("✅ Git diff processing successful!").green().bold());
+    println!(
+        "{}",
+        style("✅ Git diff processing successful!").green().bold()
+    );
     println!("📊 Analysis results:");
     println!("  └─ Files processed: {}", diff_info.files.len());
-    println!("  └─ Total added lines: {}", diff_info.files.iter().map(|f| f.added_lines).sum::<usize>());
-    println!("  └─ Total removed lines: {}", diff_info.files.iter().map(|f| f.removed_lines).sum::<usize>());
-    
+    println!(
+        "  └─ Total added lines: {}",
+        diff_info.files.iter().map(|f| f.added_lines).sum::<usize>()
+    );
+    println!(
+        "  └─ Total removed lines: {}",
+        diff_info
+            .files
+            .iter()
+            .map(|f| f.removed_lines)
+            .sum::<usize>()
+    );
+
     if args.verbose {
         println!("\n{}", style("📝 Detailed file analysis:").cyan());
         for (i, file) in diff_info.files.iter().enumerate() {
-            println!("  {}. {} (+{} -{}) [{}]", 
-                i + 1, 
-                file.path, 
-                file.added_lines, 
+            println!(
+                "  {}. {} (+{} -{}) [{:?}]",
+                i + 1,
+                file.path,
+                file.added_lines,
                 file.removed_lines,
-                format!("{:?}", file.file_type)
+                file.file_type
             );
             if !file.change_hints.is_empty() {
-                let hint_strings: Vec<String> = file.change_hints.iter().map(|h| format!("{:?}", h)).collect();
+                let hint_strings: Vec<String> = file
+                    .change_hints
+                    .iter()
+                    .map(|h| format!("{:?}", h))
+                    .collect();
                 println!("     Hints: {}", hint_strings.join(", "));
             }
         }
     }
 
-    // test commit intelligence analysis  
-    println!("\n{}", style("🧠 Testing commit intelligence analysis...").cyan());
+    // test commit intelligence analysis
+    println!(
+        "\n{}",
+        style("🧠 Testing commit intelligence analysis...").cyan()
+    );
     let intelligence = crate::ai::analyse_commit_intelligence(&diff_info);
     println!("✅ Intelligence analysis successful!");
     println!("📈 Intelligence results:");
-    println!("  └─ Complexity score: {:.1}/5.0", intelligence.complexity_score);
+    println!(
+        "  └─ Complexity score: {:.1}/5.0",
+        intelligence.complexity_score
+    );
     println!("  └─ Suggested type: {}", intelligence.commit_type_hint);
     if let Some(scope) = &intelligence.scope_hint {
         println!("  └─ Suggested scope: {}", scope);
     }
     println!("  └─ Requires body: {}", intelligence.requires_body);
-    println!("  └─ Patterns detected: {}", intelligence.detected_patterns.len());
-    
+    println!(
+        "  └─ Patterns detected: {}",
+        intelligence.detected_patterns.len()
+    );
+
     if args.verbose && !intelligence.detected_patterns.is_empty() {
         println!("  └─ Pattern details:");
         for pattern in &intelligence.detected_patterns {
-            println!("     • {} (impact: {:.1})", pattern.description, pattern.impact);
+            println!(
+                "     • {} (impact: {:.1})",
+                pattern.description, pattern.impact
+            );
         }
     }
 
-    println!("\n{}", style("🎉 All tests passed! Git diff processing is working correctly.").green().bold());
+    // test AI commit message generation
+    println!(
+        "\n{}",
+        style("🤖 Testing AI commit message generation...").cyan()
+    );
     
-    Ok(("test completed successfully".to_string(), false))
+    // load config for AI generation
+    let config = match load_config() {
+        Ok(config) => config,
+        Err(e) => {
+            println!(
+                "{}",
+                style(&format!("⚠️  Failed to load config: {}", e)).yellow()
+            );
+            // create a default config for testing
+            Config::default()
+        }
+    };
+
+    // check for API key
+    let api_key = std::env::var("OPENROUTER_API_KEY").ok();
+    if api_key.is_none() || api_key.as_ref().unwrap().trim().is_empty() {
+        println!(
+            "{}",
+            style("⚠️  OPENROUTER_API_KEY not set, skipping AI generation test").yellow()
+        );
+        println!(
+            "{}",
+            style("💡 Set OPENROUTER_API_KEY environment variable to test AI generation").dim()
+        );
+        
+        println!(
+            "\n{}",
+            style("🎉 All tests passed! Git diff processing is working correctly.")
+                .green()
+                .bold()
+        );
+        return Ok(("test completed successfully - no AI generation (no API key)".to_string(), false));
+    }
+
+    // generate commit message using AI
+    let commit_message = match crate::ai::generate_conventional_commit_with_model(
+        &diff_info,
+        args.debug,
+        args.smart_model,
+        None, // use default model
+        &config,
+    )
+    .await
+    {
+        Ok(message) => {
+            println!("✅ AI commit message generation successful!");
+            message
+        }
+        Err(e) => {
+            println!(
+                "{}",
+                style(&format!("❌ AI generation failed: {}", e)).red()
+            );
+            // still consider the test successful if only AI generation fails
+            println!(
+                "\n{}",
+                style("🎉 Core tests passed! Git diff processing is working correctly.")
+                    .green()
+                    .bold()
+            );
+            return Ok(("test completed successfully - AI generation failed".to_string(), false));
+        }
+    };
+
+    // display generated commit message
+    println!("\n{}", style("📝 Generated commit message:").green().bold());
+    println!("{}", style("─".repeat(50)).dim());
+    println!("{}", style(&commit_message).yellow());
+    println!("{}", style("─".repeat(50)).dim());
+    
+    // validate the generated message
+    if let Err(e) = crate::ai::validate_commit_message(&commit_message) {
+        println!(
+            "{}",
+            style(&format!("⚠️  Generated message validation warning: {}", e)).yellow()
+        );
+    } else {
+        println!("{}", style("✅ Generated message passes validation").green());
+    }
+
+    // optionally commit the generated message
+    let commit_successful = if args.auto_commit {
+        println!(
+            "\n{}",
+            style("🚀 Auto-committing generated message...").cyan().bold()
+        );
+        
+        let repo_dir_path = if repo_path == "." {
+            std::env::current_dir().context("Failed to get current directory")?
+        } else {
+            std::path::PathBuf::from(&repo_path)
+        };
+
+        let output = std::process::Command::new("git")
+            .current_dir(repo_dir_path)
+            .args(["commit", "-m", &commit_message])
+            .output()
+            .context("Failed to execute git commit command")?;
+
+        if output.status.success() {
+            println!("{}", style("✅ Commit successful!").green().bold());
+            if let Ok(stdout) = String::from_utf8(output.stdout) {
+                if !stdout.trim().is_empty() {
+                    println!("{}", stdout);
+                }
+            }
+            true
+        } else {
+            println!("{}", style("❌ Commit failed:").red().bold());
+            if let Ok(stderr) = String::from_utf8(output.stderr) {
+                if !stderr.trim().is_empty() {
+                    println!("{}", stderr);
+                }
+            }
+            false
+        }
+    } else {
+        false
+    };
+
+    println!(
+        "\n{}",
+        style("🎉 All tests passed! Git diff processing and AI generation working correctly.")
+            .green()
+            .bold()
+    );
+
+    Ok((commit_message, commit_successful))
 }

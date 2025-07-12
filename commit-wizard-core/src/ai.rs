@@ -72,7 +72,7 @@ pub enum PatternType {
     StyleNormalization,
     PerformanceTuning,
     SecurityHardening,
-    CiChange, // new: for ci configuration changes
+    CiChange,    // new: for ci configuration changes
     Deprecation, // new: for deprecation-related changes
     SecurityFix, // new: for security vulnerability fixes
 }
@@ -392,7 +392,8 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
 
                     return Err(anyhow::anyhow!(
                         "openrouter api error ({}): {}",
-                        status, error_text
+                        status,
+                        error_text
                     ));
                 }
             }
@@ -644,41 +645,44 @@ fn detect_universal_patterns(diff_info: &DiffInfo) -> Vec<Pattern> {
         .filter(|file| {
             let content_lower = file.diff_content.to_lowercase();
             let path_lower = file.path.to_lowercase();
-            
+
             // detect security-related keywords in diff content
-            let has_security_keywords = content_lower.contains("vulnerability") ||
-                content_lower.contains("security") ||
-                content_lower.contains("exploit") ||
-                content_lower.contains("injection") ||
-                content_lower.contains("xss") ||
-                content_lower.contains("csrf") ||
-                content_lower.contains("authentication") ||
-                content_lower.contains("authorization") ||
-                content_lower.contains("sanitiz") ||
-                content_lower.contains("escape") ||
-                content_lower.contains("validate") ||
-                content_lower.contains("permission") ||
-                content_lower.contains("encrypt") ||
-                content_lower.contains("hash") ||
-                content_lower.contains("secret") ||
-                content_lower.contains("token") ||
-                content_lower.contains("credential") ||
-                content_lower.contains("login") ||
-                content_lower.contains("password");
-            
+            let has_security_keywords = content_lower.contains("vulnerability")
+                || content_lower.contains("security")
+                || content_lower.contains("exploit")
+                || content_lower.contains("injection")
+                || content_lower.contains("xss")
+                || content_lower.contains("csrf")
+                || content_lower.contains("authentication")
+                || content_lower.contains("authorization")
+                || content_lower.contains("sanitiz")
+                || content_lower.contains("escape")
+                || content_lower.contains("validate")
+                || content_lower.contains("permission")
+                || content_lower.contains("encrypt")
+                || content_lower.contains("hash")
+                || content_lower.contains("secret")
+                || content_lower.contains("token")
+                || content_lower.contains("credential")
+                || content_lower.contains("login")
+                || content_lower.contains("password");
+
             // detect security-related file paths
-            let has_security_paths = path_lower.contains("auth") ||
-                path_lower.contains("security") ||
-                path_lower.contains("permission") ||
-                path_lower.contains("login") ||
-                path_lower.contains("middleware") ||
-                path_lower.contains("guard");
-                
+            let has_security_paths = path_lower.contains("auth")
+                || path_lower.contains("security")
+                || path_lower.contains("permission")
+                || path_lower.contains("login")
+                || path_lower.contains("middleware")
+                || path_lower.contains("guard");
+
             // detect security fixes in commit patterns (added validations, fixes, etc.)
-            let has_security_fixes = (content_lower.contains("fix") || content_lower.contains("patch")) &&
-                (content_lower.contains("auth") || content_lower.contains("security") || 
-                 content_lower.contains("validate") || content_lower.contains("sanitiz"));
-            
+            let has_security_fixes = (content_lower.contains("fix")
+                || content_lower.contains("patch"))
+                && (content_lower.contains("auth")
+                    || content_lower.contains("security")
+                    || content_lower.contains("validate")
+                    || content_lower.contains("sanitiz"));
+
             has_security_keywords || has_security_paths || has_security_fixes
         })
         .map(|f| f.path.clone())
@@ -1272,7 +1276,8 @@ fn suggest_commit_metadata(patterns: &[Pattern], diff_info: &DiffInfo) -> (Strin
                 *type_scores.entry("ci").or_default() += pattern.impact;
             }
             PatternType::Deprecation => {
-                *type_scores.entry("feat").or_default() += pattern.impact * 1.2; // deprecation often indicates API evolution/features
+                *type_scores.entry("feat").or_default() += pattern.impact * 1.2;
+                // deprecation often indicates API evolution/features
             }
             PatternType::SecurityFix => {
                 *type_scores.entry("fix").or_default() += pattern.impact * 2.0; // security fixes are high priority fixes
@@ -1523,7 +1528,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
             .as_ref()
             .map_or("".to_string(), |s| format!("({})", s));
 
-        // tailor examples based on language and patterns  
+        // tailor examples based on language and patterns
         if dominant_language.starts_with("Mixed") {
             // handle mixed language repositories
             prompt.push_str(&format!(
@@ -1537,48 +1542,50 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         } else {
             match dominant_language.as_str() {
                 "Rust" if has_new_files && has_features => {
-                prompt.push_str(&format!(
-                    "{}{}: implement pattern detection for commit analysis\n\n",
-                    intelligence.commit_type_hint, scope_str
-                ));
-                prompt.push_str("- Add PatternType enum with deprecation detection\n");
-                prompt.push_str("- Implement detect_universal_patterns function\n");
-                prompt.push_str("- Enhance Result error handling with anyhow context\n");
-                prompt.push_str("- Add comprehensive file type classification\n");
-            }
-            "JavaScript/TypeScript" if has_new_files && has_features => {
-                prompt.push_str(&format!(
-                    "{}{}: implement responsive ui components with dark mode\n\n",
-                    intelligence.commit_type_hint, scope_str
-                ));
-                prompt.push_str("- Add responsive FlexContainer with media queries\n");
-                prompt.push_str("- Implement theme provider for dark/light modes\n");
-                prompt.push_str("- Create reusable Button and Input components\n");
-                prompt.push_str("- Fix z-index issues in modal overlays\n");
-            }
-            "Python" if has_new_files && has_features => {
-                prompt.push_str(&format!(
-                    "{}{}: implement data processing pipeline with validation\n\n",
-                    intelligence.commit_type_hint, scope_str
-                ));
-                prompt.push_str("- Add DataProcessor class with async methods\n");
-                prompt.push_str("- Implement pydantic models for input validation\n");
-                prompt.push_str("- Create pipeline orchestration with error handling\n");
-                prompt.push_str("- Add comprehensive unit tests with pytest\n");
-            }
-            _ if has_refactoring => {
-                prompt.push_str(&format!(
-                    "{}{}: restructure codebase for better maintainability\n\n",
-                    intelligence.commit_type_hint, scope_str
-                ));
-                prompt.push_str("- Extract shared functionality into utilities\n");
-                prompt.push_str("- Improve separation of concerns across modules\n");
-                prompt.push_str("- Consolidate duplicate logic patterns\n");
-            }
+                    prompt.push_str(&format!(
+                        "{}{}: implement pattern detection for commit analysis\n\n",
+                        intelligence.commit_type_hint, scope_str
+                    ));
+                    prompt.push_str("- Add PatternType enum with deprecation detection\n");
+                    prompt.push_str("- Implement detect_universal_patterns function\n");
+                    prompt.push_str("- Enhance Result error handling with anyhow context\n");
+                    prompt.push_str("- Add comprehensive file type classification\n");
+                }
+                "JavaScript/TypeScript" if has_new_files && has_features => {
+                    prompt.push_str(&format!(
+                        "{}{}: implement responsive ui components with dark mode\n\n",
+                        intelligence.commit_type_hint, scope_str
+                    ));
+                    prompt.push_str("- Add responsive FlexContainer with media queries\n");
+                    prompt.push_str("- Implement theme provider for dark/light modes\n");
+                    prompt.push_str("- Create reusable Button and Input components\n");
+                    prompt.push_str("- Fix z-index issues in modal overlays\n");
+                }
+                "Python" if has_new_files && has_features => {
+                    prompt.push_str(&format!(
+                        "{}{}: implement data processing pipeline with validation\n\n",
+                        intelligence.commit_type_hint, scope_str
+                    ));
+                    prompt.push_str("- Add DataProcessor class with async methods\n");
+                    prompt.push_str("- Implement pydantic models for input validation\n");
+                    prompt.push_str("- Create pipeline orchestration with error handling\n");
+                    prompt.push_str("- Add comprehensive unit tests with pytest\n");
+                }
+                _ if has_refactoring => {
+                    prompt.push_str(&format!(
+                        "{}{}: restructure codebase for better maintainability\n\n",
+                        intelligence.commit_type_hint, scope_str
+                    ));
+                    prompt.push_str("- Extract shared functionality into utilities\n");
+                    prompt.push_str("- Improve separation of concerns across modules\n");
+                    prompt.push_str("- Consolidate duplicate logic patterns\n");
+                }
                 _ => {
                     prompt.push_str(&format!(
                         "{}{}: {}\n\n",
-                        intelligence.commit_type_hint, scope_str, "describe the main change briefly"
+                        intelligence.commit_type_hint,
+                        scope_str,
+                        "describe the main change briefly"
                     ));
                     prompt.push_str("- Explain first major change with technical specifics\n");
                     prompt.push_str("- Describe second significant modification\n");
@@ -1626,84 +1633,84 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
                 intelligence.commit_type_hint.as_str(),
                 dominant_language.as_str(),
             ) {
-            ("feat", "Rust") => {
-                prompt.push_str(&format!(
-                    "feat{}: add deprecation detection in pattern analysis\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "feat{}: implement Result-based error propagation\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "feat{}!: introduce breaking changes to public api\n",
-                    scope_str
-                ));
-            }
-            ("feat", "JavaScript/TypeScript") => {
-                prompt.push_str(&format!(
-                    "feat{}: add dark mode toggle with context provider\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "feat{}: implement responsive navigation component\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "feat{}!: migrate to new routing architecture\n",
-                    scope_str
-                ));
-            }
-            ("feat", "Python") => {
-                prompt.push_str(&format!(
-                    "feat{}: add async data validation pipeline\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "feat{}: implement pydantic model serialisation\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "feat{}!: update to python 3.12 type annotations\n",
-                    scope_str
-                ));
-            }
-            ("fix", _) => {
-                prompt.push_str(&format!(
-                    "fix{}: resolve memory leak in diff processing\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "fix{}: handle edge case in api response parsing\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "fix{}: prevent null pointer dereference\n",
-                    scope_str
-                ));
-            }
-            ("refactor", _) => {
-                prompt.push_str(&format!(
-                    "refactor{}: extract validation logic into utilities\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "refactor{}: simplify error handling patterns\n",
-                    scope_str
-                ));
-                prompt.push_str(&format!(
-                    "refactor{}: consolidate duplicate file processing\n",
-                    scope_str
-                ));
-            }
-            _ => {
-                prompt.push_str(&format!(
-                    "{}{}: {}\n",
-                    intelligence.commit_type_hint,
-                    scope_str,
-                    "brief description of specific change"
-                ));
-            }
+                ("feat", "Rust") => {
+                    prompt.push_str(&format!(
+                        "feat{}: add deprecation detection in pattern analysis\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "feat{}: implement Result-based error propagation\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "feat{}!: introduce breaking changes to public api\n",
+                        scope_str
+                    ));
+                }
+                ("feat", "JavaScript/TypeScript") => {
+                    prompt.push_str(&format!(
+                        "feat{}: add dark mode toggle with context provider\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "feat{}: implement responsive navigation component\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "feat{}!: migrate to new routing architecture\n",
+                        scope_str
+                    ));
+                }
+                ("feat", "Python") => {
+                    prompt.push_str(&format!(
+                        "feat{}: add async data validation pipeline\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "feat{}: implement pydantic model serialisation\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "feat{}!: update to python 3.12 type annotations\n",
+                        scope_str
+                    ));
+                }
+                ("fix", _) => {
+                    prompt.push_str(&format!(
+                        "fix{}: resolve memory leak in diff processing\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "fix{}: handle edge case in api response parsing\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "fix{}: prevent null pointer dereference\n",
+                        scope_str
+                    ));
+                }
+                ("refactor", _) => {
+                    prompt.push_str(&format!(
+                        "refactor{}: extract validation logic into utilities\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "refactor{}: simplify error handling patterns\n",
+                        scope_str
+                    ));
+                    prompt.push_str(&format!(
+                        "refactor{}: consolidate duplicate file processing\n",
+                        scope_str
+                    ));
+                }
+                _ => {
+                    prompt.push_str(&format!(
+                        "{}{}: {}\n",
+                        intelligence.commit_type_hint,
+                        scope_str,
+                        "brief description of specific change"
+                    ));
+                }
             }
         }
         prompt.push_str("```\n\n");
@@ -2280,7 +2287,7 @@ fn is_likely_commit_message(line: &str) -> bool {
 }
 
 /// validate that the generated commit message follows conventional commits format
-fn validate_commit_message(msg: &str) -> Result<()> {
+pub fn validate_commit_message(msg: &str) -> Result<()> {
     let lines: Vec<&str> = msg.lines().collect();
     if lines.is_empty() {
         return Err(anyhow::anyhow!("commit message is empty"));
@@ -2770,6 +2777,7 @@ fn infer_dominant_language(diff_info: &DiffInfo) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::FileType;
 
     #[test]
     fn mixed_languages_detection() {
