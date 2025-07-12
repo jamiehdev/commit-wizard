@@ -1,3 +1,9 @@
+## v1.3.3
+
+- fix(ci): configure git user for release tool commits
+- fix(ci): remove invalid --workspace flag from cargo run command
+- docs: update changelog with JSON corruption fix
+
 ## v1.3.2
 
 - fix(release): fix JSON corruption in package.json version updates
