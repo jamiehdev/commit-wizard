@@ -1,3 +1,12 @@
+## v1.3.2
+
+- fix(release): support prerelease versions and stable releases from release branches
+- chore: update Cargo.lock for v1.3.2-beta
+- chore(release): v1.3.2-beta
+- chore(commit-wizard-core): update editor configuration and format print statement
+- fix(editor): improve editor selection for mac users
+- fix: enhance git security and automate releases with new release_tool
+
 ## v1.3.2-beta
 
 - chore(commit-wizard-core): update editor configuration and format print statement
