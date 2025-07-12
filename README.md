@@ -101,9 +101,11 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 | requirement | details |
 |-------------|---------|
 | operating systems | macos, linux, windows |
-| node.js | 16+ (for npm installation) |
+| node.js | 20+ (for npm installation) |
 | git | any recent version |
 | ai api key | openrouter (recommended) or openai |
+
+> **note on windows:** the standalone binary for windows is distributed as a `.tar.gz` archive. you may need a tool like 7-zip or winrar to extract it.
 
 ---
 
@@ -248,66 +250,74 @@ commit wizard works with any openai-compatible api. popular choices:
 
 <details>
 <summary><strong>how accurate are the generated commit messages?</strong></summary>
+<p>very accurate! commit wizard's pattern detection and context-aware analysis mean it understands the intent behind your changes. for best results, ensure your code has meaningful variable and function names.</p>
+</details>
 
-> commit wizard v1.1.0 brings significant accuracy improvements with intelligent pattern detection across 15+ change types, context-aware diff analysis that sends actual code content to ai (not just summaries), and smart filtering that excludes noise whilst preserving meaningful changes. the ai now sees exactly what you changed, leading to specific, descriptive commit messages.
+<details>
+<summary><strong>what happens if i run <code>commit-wizard</code> with no staged changes?</strong></summary>
+<p><code>commit-wizard</code> is smart about it. if there are no staged changes, it will look for any unstaged changes in your repository and offer to use those instead. if there are no changes at all (staged or unstaged), it will inform you and exit gracefully.</p>
+</details>
 
+<details>
+<summary><strong>how does <code>commit-wizard</code> handle very large changes or huge diffs?</strong></summary>
+<p><code>commit-wizard</code> has safeguards to handle large changes effectively. it analyses file content up to a certain limit (default 2000 lines per diff) to ensure performance and stay within the ai model's context window. it also limits the number of files it analyzes in a single run. for exceptionally large commits, it's often better to break them down into smaller, logical commits, and <code>commit-wizard</code> encourages this by focusing on a manageable set of changes.</p>
+</details>
+
+<details>
+<summary><strong>what about binary files or lock files?</strong></summary>
+<p><code>commit-wizard</code> is configured to automatically ignore binary files (like images or executables) and lock files (like <code>package-lock.json</code> or <code>Cargo.lock</code>). this ensures that only meaningful code changes are sent to the ai, resulting in more accurate and relevant commit messages.</p>
+</details>
+
+<details>
+<summary><strong>is my code sent to a third-party server?</strong></summary>
+<p>yes, but only the parts that changed. commit wizard sends your git diff to the configured ai provider's api (e.g., openrouter). private or proprietary code should be handled with care. always review your organisation's policies on using external ai tools.</p>
 </details>
 
 <details>
 <summary><strong>can i edit the generated messages?</strong></summary>
-
-> absolutely! the interactive workflow lets you:
-> - accept the message as-is
-> - edit it in your preferred editor
-> - regenerate a completely new message
-> - cancel and make manual commits
-
-</details>
-
-<details>
-<summary><strong>what if i don't have staged changes?</strong></summary>
-
-> commit wizard will automatically analyse your unstaged changes and warn you. you can stage the changes you want and run it again, or let it analyse everything and then stage before committing.
-
+<p>absolutely! the interactive workflow lets you review the generated message and choose to accept it, edit it in your default terminal editor, or regenerate a new one if you're not satisfied.</p>
 </details>
 
 <details>
 <summary><strong>how much does it cost to use?</strong></summary>
-
-> using openrouter with the default free model (`deepseek/deepseek-r1-0528:free`) costs nothing. premium models have small per-request costs (typically $0.001-0.01 per commit).
-
-</details>
-
-<details>
-<summary><strong>does it work with large codebases?</strong></summary>
-
-> absolutely! commit wizard v1.1.0 is optimised for large codebases with intelligent diff filtering:
-> - automatically excludes auto-generated files (lock files, node_modules, build artifacts)
-> - prioritises source code over tests, config, and documentation
-> - sends up to 2000 lines of meaningful changes to ai (perfect for modern 64k+ token models)
-> - smart file prioritisation ensures important changes get full context
-> - performance optimisations with cached patterns and efficient analysis
-
+<p>using openrouter with the default free model (`deepseek/deepseek-r1-0528:free`) costs nothing. if you choose to use premium models, there are small per-request costs, but they are generally very low.</p>
 </details>
 
 <details>
 <summary><strong>can i use it in ci/cd pipelines?</strong></summary>
-
-> yes! use the `--yes` flag for automated commits:
->
-> ```bash
-> commit-wizard --yes
-> ```
->
-> perfect for automated dependency updates, code generation, etc.
-
+<p>yes! use the <code>--yes</code> flag (<code>-y</code> for short) for non-interactive, automated commits. this is perfect for scripts, hooks, or CI/CD pipelines where you want to automate commit message generation.</p>
 </details>
+
+---
+
+## automated quality assurance
+
+this project is committed to high standards of code quality and release reliability, enforced through a comprehensive, automated ci/cd pipeline. here’s what we check on every change:
+
+| check | tool | description |
+|---|---|---|
+| **unit & integration tests** | `cargo test` & `npm test` | validates that core rust logic and node.js bindings are working correctly across all supported platforms (linux, macos, windows). |
+| **code quality linting** | `clippy` | automatically checks for common rust pitfalls and ensures the code is idiomatic and performant. |
+| **security vulnerability scanning** | `cargo audit` | scans all rust dependencies for known security vulnerabilities to prevent supply chain attacks. |
+| **commit message linting** | `commitlint` | enforces that every commit in a pull request follows the conventional commits specification. |
+| **consistent build environment**| node.js & rust versions | ensures that all builds and tests run in a consistent environment to prevent platform-specific bugs. |
+| **automated releases** | github actions & `gh` | creates automated, tagged releases on github and publishes to npm, with artifacts for all platforms. |
 
 ---
 
 ## contributing
 
 we welcome contributions! whether you're fixing bugs, adding features, or improving documentation.
+
+### release process
+
+this project uses a semi-automated release process driven by github actions. here’s how it works:
+
+1.  **preparation**: for a new release, a maintainer will typically bump the version numbers in `cargo.toml` and `package.json` and run a local script to update the `changelog.md`.
+2.  **triggering the release**: the release process is triggered when a new tag is pushed to the repository in the format `v*` (e.g., `v1.4.0`).
+3.  **automation**: the `build & release` workflow automatically builds the binaries and napi modules for all platforms, runs tests, and publishes the release to both github and npm.
+
+if you are contributing, you do not need to worry about this process. simply create a pull request with your changes, and a maintainer will handle the release.
 
 ### development workflow
 

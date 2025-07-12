@@ -41,35 +41,72 @@ jobs:
       - name: setup node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-      
+          node-version: 20
+          cache: npm
+          cache-dependency-path: commit-wizard-napi/package-lock.json
+
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.80.0
         with:
           targets: ${{ matrix.settings.target }}
+          components: clippy
       
-      - name: install openssl for cross-compilation
-        if: matrix.settings.target == 'x86_64-apple-darwin' && runner.os == 'macOS'
+      - name: cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: install and run cargo-audit
         run: |
-          # Install OpenSSL via Homebrew
+          cargo install cargo-audit
+          cargo audit
+
+      - name: run clippy
+        run: cargo clippy -- -D warnings
+
+      - name: run cargo tests
+        run: cargo test
+
+      - name: install and run cargo-tarpaulin for coverage
+        if: matrix.settings.host == 'ubuntu-latest'
+        run: |
+          cargo install cargo-tarpaulin
+          cargo tarpaulin --all-features --workspace --out Html
+
+      - name: upload coverage report
+        if: matrix.settings.host == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: tarpaulin-report.html
+
+      - name: install openssl on macos
+        if: runner.os == 'macOS'
+        run: |
           brew install openssl@3
+          OPENSSL_PATH=$(brew --prefix openssl@3)
+          echo "OPENSSL_DIR=$OPENSSL_PATH" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$OPENSSL_PATH/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$OPENSSL_PATH/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$OPENSSL_PATH/include" >> $GITHUB_ENV
           
-          # Set environment variables for cross-compilation
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
-          
-          # Also set target-specific environment variables
-          echo "X86_64_APPLE_DARWIN_OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "X86_64_APPLE_DARWIN_OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
-          echo "X86_64_APPLE_DARWIN_OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+          TARGET_UPPER_SNAKE=$(echo ${{ matrix.settings.target }} | tr 'a-z-' 'A-Z_')
+          echo "${TARGET_UPPER_SNAKE}_OPENSSL_DIR=$OPENSSL_PATH" >> $GITHUB_ENV
+          echo "${TARGET_UPPER_SNAKE}_OPENSSL_LIB_DIR=$OPENSSL_PATH/lib" >> $GITHUB_ENV
+          echo "${TARGET_UPPER_SNAKE}_OPENSSL_INCLUDE_DIR=$OPENSSL_PATH/include" >> $GITHUB_ENV
       
       - name: build napi module
         shell: bash
         run: |
           cd commit-wizard-napi
           npm install
+          npm test
           npm run build
           ls -la
           find . -name "*.node" -type f
@@ -112,31 +149,37 @@ jobs:
       - name: setup node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           registry-url: 'https://registry.npmjs.org/'
+          cache: npm
+          cache-dependency-path: commit-wizard-napi/package-lock.json
       
       - name: download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
       
-      - name: move napi artifacts
+      - name: setup napi artifacts for npm
         run: |
-          mkdir -p commit-wizard-napi/npm/linux-x64-gnu
-          mkdir -p commit-wizard-napi/npm/darwin-x64
-          mkdir -p commit-wizard-napi/npm/darwin-arm64
-          mkdir -p commit-wizard-napi/npm/win32-x64-msvc
-          
           cp artifacts/bindings-linux-x64-gnu/*.node commit-wizard-napi/
           cp artifacts/bindings-darwin-x64/*.node commit-wizard-napi/
           cp artifacts/bindings-darwin-arm64/*.node commit-wizard-napi/
           cp artifacts/bindings-win32-x64-msvc/*.node commit-wizard-napi/
       
-      - name: prepare rust binaries for release
+      - name: publish to npm
+        run: |
+          cd commit-wizard-napi
+          npm install
+          npm run prepare_for_prepublish
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      - name: prepare rust binaries for github release
         run: |
           mkdir -p release-binaries
           
-          # copy and create archives for each platform
+          # create archives for each platform
           cp artifacts/rust-binary-x86_64-unknown-linux-gnu/commit-wizard-x86_64-unknown-linux-gnu release-binaries/
           tar -czf release-binaries/commit-wizard-linux-x64.tar.gz -C release-binaries commit-wizard-x86_64-unknown-linux-gnu
           
@@ -147,126 +190,38 @@ jobs:
           tar -czf release-binaries/commit-wizard-macos-arm64.tar.gz -C release-binaries commit-wizard-aarch64-apple-darwin
           
           cp artifacts/rust-binary-x86_64-pc-windows-msvc/commit-wizard-x86_64-pc-windows-msvc.exe release-binaries/
-          cd release-binaries && zip commit-wizard-windows-x64.zip commit-wizard-x86_64-pc-windows-msvc.exe && cd ..
-      
-      - name: install dependencies
-        run: |
-          cd commit-wizard-napi
-          npm install
-      
-      - name: publish to npm
-        run: |
-          cd commit-wizard-napi
-          npm run prepare_for_prepublish
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          tar -czf release-binaries/commit-wizard-windows-x64.tar.gz -C release-binaries commit-wizard-x86_64-pc-windows-msvc.exe
       
       - name: create github release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: commit-wizard ${{ github.ref_name }}
+          name: commit-wizard ${{ github.ref_name }}
           body: |
             ## commit-wizard ${{ github.ref_name }}
             
-            install via npm: `npm i -g @jamiehdev/commit-wizard`
+            install via npm: `npm install -g @jamiehdev/commit-wizard`
             
             ### standalone binaries
             download and run directly without node.js:
-            - linux x64: `commit-wizard-linux-x64.tar.gz`
-            - macos x64: `commit-wizard-macos-x64.tar.gz`
-            - macos arm64: `commit-wizard-macos-arm64.tar.gz`
-            - windows x64: `commit-wizard-windows-x64.zip`
+            - linux x64: commit-wizard-linux-x64.tar.gz
+            - macos x64: commit-wizard-macos-x64.tar.gz
+            - macos arm64: commit-wizard-macos-arm64.tar.gz
+            - windows x64: commit-wizard-windows-x64.tar.gz
             
             ### napi modules (for development)
-            - linux x64: `commit-wizard.linux-x64-gnu.node`
-            - macos x64: `commit-wizard.darwin-x64.node` 
-            - macos arm64: `commit-wizard.darwin-arm64.node`
-            - windows x64: `commit-wizard.win32-x64-msvc.node`
+            - linux x64: commit-wizard.linux-x64-gnu.node
+            - macos x64: commit-wizard.darwin-x64.node 
+            - macos arm64: commit-wizard.darwin-arm64.node
+            - windows x64: commit-wizard.win32-x64-msvc.node
+          files: |
+            release-binaries/commit-wizard-linux-x64.tar.gz
+            release-binaries/commit-wizard-macos-x64.tar.gz
+            release-binaries/commit-wizard-macos-arm64.tar.gz
+            release-binaries/commit-wizard-windows-x64.tar.gz
+            artifacts/bindings-linux-x64-gnu/commit-wizard.linux-x64-gnu.node
+            artifacts/bindings-darwin-x64/commit-wizard.darwin-x64.node
+            artifacts/bindings-darwin-arm64/commit-wizard.darwin-arm64.node
+            artifacts/bindings-win32-x64-msvc/commit-wizard.win32-x64-msvc.node
           draft: false
           prerelease: false
-      
-      - name: upload linux binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/bindings-linux-x64-gnu/commit-wizard.linux-x64-gnu.node
-          asset_name: commit-wizard.linux-x64-gnu.node
-          asset_content_type: application/octet-stream
-      
-      - name: upload macos x64 binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/bindings-darwin-x64/commit-wizard.darwin-x64.node
-          asset_name: commit-wizard.darwin-x64.node
-          asset_content_type: application/octet-stream
-      
-      - name: upload macos arm64 binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/bindings-darwin-arm64/commit-wizard.darwin-arm64.node
-          asset_name: commit-wizard.darwin-arm64.node
-          asset_content_type: application/octet-stream
-      
-      - name: upload windows binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/bindings-win32-x64-msvc/commit-wizard.win32-x64-msvc.node
-          asset_name: commit-wizard.win32-x64-msvc.node
-          asset_content_type: application/octet-stream
-      
-      # upload standalone rust binaries
-      - name: upload linux rust binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-binaries/commit-wizard-linux-x64.tar.gz
-          asset_name: commit-wizard-linux-x64.tar.gz
-          asset_content_type: application/gzip
-      
-      - name: upload macos x64 rust binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-binaries/commit-wizard-macos-x64.tar.gz
-          asset_name: commit-wizard-macos-x64.tar.gz
-          asset_content_type: application/gzip
-      
-      - name: upload macos arm64 rust binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-binaries/commit-wizard-macos-arm64.tar.gz
-          asset_name: commit-wizard-macos-arm64.tar.gz
-          asset_content_type: application/gzip
-      
-      - name: upload windows rust binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-binaries/commit-wizard-windows-x64.zip
-          asset_name: commit-wizard-windows-x64.zip
-          asset_content_type: application/zip

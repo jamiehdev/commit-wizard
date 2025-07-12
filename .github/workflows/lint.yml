@@ -7,6 +7,7 @@ on:
 jobs:
   commitlint:
     runs-on: ubuntu-latest
+    continue-on-error: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -15,7 +16,8 @@ jobs:
       - name: install nodejs
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
+          cache: npm
 
       - name: install commitlint
         run: npm install conventional-changelog-conventionalcommits @commitlint/config-conventional @commitlint/cli

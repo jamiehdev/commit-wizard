@@ -27,7 +27,12 @@ jobs:
           git config --global user.email "jamie@prettypragmatic.com"
 
       - name: run release tool
+        if: github.ref == 'refs/heads/main'
         run: cargo run --bin release-tool
+
+      - name: run release tool (dry run)
+        if: startsWith(github.ref, 'refs/heads/release/')
+        run: cargo run --bin release-tool -- --dry-run
 
       - name: push changes and tags
         run: |

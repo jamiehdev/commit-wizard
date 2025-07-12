@@ -45,11 +45,6 @@ junit.xml
 *.bak
 *.tmp
 
-# cargo.lock is typically committed for workspace projects building binaries
-# to ensure reproducible builds.
-# if you have a strong reason not to commit it for this project, uncomment the line below.
-# Cargo.lock
-
 # local test repositories
 /napi_test_repo/
 /test-repo/
