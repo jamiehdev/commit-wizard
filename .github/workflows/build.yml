@@ -156,7 +156,6 @@ jobs:
           body: |
             ## commit-wizard ${{ github.ref_name }}
             
-<<<<<<< HEAD
             install via npm: `npm i -g @jamiehdev/commit-wizard`
             
             ### standalone binaries

@@ -2766,3 +2766,38 @@ fn infer_dominant_language(diff_info: &DiffInfo) -> String {
         sorted_langs[0].0.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mixed_languages_detection() {
+        let diff_info = DiffInfo {
+            files: vec![
+                ModifiedFile {
+                    path: "src/main.rs".to_string(),
+                    added_lines: 1,
+                    removed_lines: 0,
+                    diff_content: String::new(),
+                    file_type: FileType::SourceCode,
+                    change_hints: vec![],
+                },
+                ModifiedFile {
+                    path: "lib/utils.py".to_string(),
+                    added_lines: 1,
+                    removed_lines: 0,
+                    diff_content: String::new(),
+                    file_type: FileType::SourceCode,
+                    change_hints: vec![],
+                },
+            ],
+            summary: String::new(),
+        };
+
+        let result = infer_dominant_language(&diff_info);
+        assert!(result.starts_with("Mixed"));
+        assert!(result.contains("Rust"));
+        assert!(result.contains("Python"));
+    }
+}
