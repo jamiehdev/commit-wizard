@@ -48,7 +48,7 @@ jobs:
         with:
           targets: ${{ matrix.settings.target }}
       
-      - name: build
+      - name: build napi module
         shell: bash
         run: |
           cd commit-wizard-napi
@@ -57,11 +57,30 @@ jobs:
           ls -la
           find . -name "*.node" -type f
       
-      - name: upload artifacts
+      - name: build rust cli binary
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.settings.target }} --bin commit-wizard
+          
+          # prepare binary with appropriate extension
+          if [[ "${{ matrix.settings.target }}" == *"windows"* ]]; then
+            cp target/${{ matrix.settings.target }}/release/commit-wizard.exe commit-wizard-${{ matrix.settings.target }}.exe
+          else
+            cp target/${{ matrix.settings.target }}/release/commit-wizard commit-wizard-${{ matrix.settings.target }}
+          fi
+      
+      - name: upload napi artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.platform }}
           path: commit-wizard-napi/*.node
+          if-no-files-found: error
+      
+      - name: upload rust binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-binary-${{ matrix.settings.target }}
+          path: commit-wizard-*
           if-no-files-found: error
   
   publish:
@@ -84,7 +103,7 @@ jobs:
         with:
           path: artifacts
       
-      - name: move artifacts
+      - name: move napi artifacts
         run: |
           mkdir -p commit-wizard-napi/npm/linux-x64-gnu
           mkdir -p commit-wizard-napi/npm/darwin-x64
@@ -95,6 +114,23 @@ jobs:
           cp artifacts/bindings-darwin-x64/*.node commit-wizard-napi/
           cp artifacts/bindings-darwin-arm64/*.node commit-wizard-napi/
           cp artifacts/bindings-win32-x64-msvc/*.node commit-wizard-napi/
+      
+      - name: prepare rust binaries for release
+        run: |
+          mkdir -p release-binaries
+          
+          # copy and create archives for each platform
+          cp artifacts/rust-binary-x86_64-unknown-linux-gnu/commit-wizard-x86_64-unknown-linux-gnu release-binaries/
+          tar -czf release-binaries/commit-wizard-linux-x64.tar.gz -C release-binaries commit-wizard-x86_64-unknown-linux-gnu
+          
+          cp artifacts/rust-binary-x86_64-apple-darwin/commit-wizard-x86_64-apple-darwin release-binaries/
+          tar -czf release-binaries/commit-wizard-macos-x64.tar.gz -C release-binaries commit-wizard-x86_64-apple-darwin
+          
+          cp artifacts/rust-binary-aarch64-apple-darwin/commit-wizard-aarch64-apple-darwin release-binaries/
+          tar -czf release-binaries/commit-wizard-macos-arm64.tar.gz -C release-binaries commit-wizard-aarch64-apple-darwin
+          
+          cp artifacts/rust-binary-x86_64-pc-windows-msvc/commit-wizard-x86_64-pc-windows-msvc.exe release-binaries/
+          cd release-binaries && zip commit-wizard-windows-x64.zip commit-wizard-x86_64-pc-windows-msvc.exe && cd ..
       
       - name: install dependencies
         run: |
@@ -122,7 +158,14 @@ jobs:
             
             install via npm: `npm i -g @jamiehdev/commit-wizard`
             
-            ### binaries
+            ### standalone binaries
+            download and run directly without node.js:
+            - linux x64: `commit-wizard-linux-x64.tar.gz`
+            - macos x64: `commit-wizard-macos-x64.tar.gz`
+            - macos arm64: `commit-wizard-macos-arm64.tar.gz`
+            - windows x64: `commit-wizard-windows-x64.zip`
+            
+            ### napi modules (for development)
             - linux x64: `commit-wizard.linux-x64-gnu.node`
             - macos x64: `commit-wizard.darwin-x64.node` 
             - macos arm64: `commit-wizard.darwin-arm64.node`
@@ -169,3 +212,44 @@ jobs:
           asset_path: artifacts/bindings-win32-x64-msvc/commit-wizard.win32-x64-msvc.node
           asset_name: commit-wizard.win32-x64-msvc.node
           asset_content_type: application/octet-stream
+      
+      # upload standalone rust binaries
+      - name: upload linux rust binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release-binaries/commit-wizard-linux-x64.tar.gz
+          asset_name: commit-wizard-linux-x64.tar.gz
+          asset_content_type: application/gzip
+      
+      - name: upload macos x64 rust binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release-binaries/commit-wizard-macos-x64.tar.gz
+          asset_name: commit-wizard-macos-x64.tar.gz
+          asset_content_type: application/gzip
+      
+      - name: upload macos arm64 rust binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release-binaries/commit-wizard-macos-arm64.tar.gz
+          asset_name: commit-wizard-macos-arm64.tar.gz
+          asset_content_type: application/gzip
+      
+      - name: upload windows rust binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release-binaries/commit-wizard-windows-x64.zip
+          asset_name: commit-wizard-windows-x64.zip
+          asset_content_type: application/zip
