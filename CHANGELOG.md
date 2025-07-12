@@ -1,5 +1,6 @@
 ## v1.3.2
 
+- fix(release): fix JSON corruption in package.json version updates
 - fix(release): support prerelease versions and stable releases from release branches
 - chore: update Cargo.lock for v1.3.2-beta
 - chore(release): v1.3.2-beta
