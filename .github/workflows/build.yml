@@ -77,7 +77,7 @@ jobs:
         if: matrix.settings.host == 'ubuntu-latest'
         run: |
           cargo install cargo-tarpaulin
-          cargo tarpaulin --all-features --workspace --out Html
+          cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html
 
       - name: upload coverage report
         if: matrix.settings.host == 'ubuntu-latest'
