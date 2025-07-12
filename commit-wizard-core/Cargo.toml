@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "Core logic for AI-powered conventional commit message generation"
 
+[[bin]]
+name = "release-tool"
+path = "src/bin/release_tool.rs"
+
 [dependencies]
 # Dependencies needed for ai.rs, git.rs, utils.rs, and core logic
 git2 = "0.18"
@@ -26,3 +30,5 @@ edit = "0.1.4" # for editing commit messages in an external editor
 crossterm = "0.27" # for terminal mode control
 atty = "0.2" # for terminal detection
 which = "4"
+regex = "1.10"
+semver = "1.0"

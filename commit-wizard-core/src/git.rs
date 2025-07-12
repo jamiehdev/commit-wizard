@@ -419,13 +419,16 @@ fn process_diff(
 
     // handle git2 error code -7 (GIT_EUSER) as normal early termination
     match result {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) if e.code() == git2::ErrorCode::User => {
             // early termination due to max_files limit reached - this is expected
             if verbose {
-                println!("reached maximum file limit ({}), processing truncated", max_files);
+                println!(
+                    "reached maximum file limit ({}), processing truncated",
+                    max_files
+                );
             }
-        },
+        }
         Err(e) => return Err(e.into()),
     }
 
