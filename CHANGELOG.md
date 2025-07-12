@@ -1,3 +1,9 @@
+## v1.3.2-beta
+
+- chore(commit-wizard-core): update editor configuration and format print statement
+- fix(editor): improve editor selection for mac users
+- fix: enhance git security and automate releases with new release_tool
+
 # changelog
 
 all notable changes to this project will be documented in this file.
