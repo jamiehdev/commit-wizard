@@ -5,8 +5,7 @@ use regex::Regex;
 use semver::{Prerelease, Version};
 use std::env;
 use std::fs;
-use std::path::Path;
-use std::process::exit;
+use std::process::{exit, Command};
 
 /// entrypoint – parse args then run
 fn main() -> Result<()> {
@@ -24,7 +23,7 @@ fn main() -> Result<()> {
     // compute next version according to semver and conventional commits
     let branch = current_branch(&repo)?;
     let mut next_version = current_version.clone();
-    
+
     // if on a release branch and current version is prerelease, create stable version
     if branch.starts_with("release/") && !current_version.pre.is_empty() {
         next_version.pre = Prerelease::EMPTY;
@@ -134,17 +133,29 @@ fn read_workspace_version() -> Result<Version> {
 /// update versions in cargo workspace and node packages
 fn update_versions(ver: &Version) -> Result<()> {
     write_cargo_version(ver)?;
-    write_package_json_version(Path::new("commit-wizard-napi/package.json"), ver)?;
 
-    // update nested package.json files under commit-wizard-napi/npm/*
-    if Path::new("commit-wizard-napi/npm").exists() {
-        for entry in fs::read_dir("commit-wizard-napi/npm")? {
-            let path = entry?.path();
-            if path.is_dir() {
-                write_package_json_version(&path.join("package.json"), ver)?;
-            }
-        }
+    // use the sync script to propagate version to all package.json files
+    run_version_sync_script()?;
+
+    Ok(())
+}
+
+/// run the version sync script to propagate version from cargo.toml to package.json files
+fn run_version_sync_script() -> Result<()> {
+    let output = Command::new("node")
+        .arg("commit-wizard-napi/scripts/sync-version.mjs")
+        .output()
+        .context("failed to run version sync script")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("version sync script failed: {}", stderr));
     }
+
+    // print the script output for visibility
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    print!("{}", stdout);
+
     Ok(())
 }
 
@@ -154,17 +165,6 @@ fn write_cargo_version(ver: &Version) -> Result<()> {
     let re = Regex::new(r#"version\s*=\s*"([^"]+)""#).unwrap();
     let new_content = re.replace(&content, format!("version = \"{}\"", ver));
     fs::write(cargo_toml_path, new_content.as_bytes())?;
-    Ok(())
-}
-
-fn write_package_json_version(path: &Path, ver: &Version) -> Result<()> {
-    if !path.exists() {
-        return Ok(()); // nothing to do
-    }
-    let text = fs::read_to_string(path)?;
-    let re = Regex::new(r#""version":\s*"[^"]+""#).unwrap();
-    let updated = re.replace(&text, format!("\"version\": \"{}\"", ver));
-    fs::write(path, updated.as_bytes())?;
     Ok(())
 }
 

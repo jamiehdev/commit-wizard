@@ -53,3 +53,33 @@ junit.xml
 # local test repositories
 /napi_test_repo/
 /test-repo/
+
+# generated release artifacts
+release-binaries/
+artifacts/
+commit-wizard-*
+*.tar.gz
+*.zip
+
+# additional caches and logs
+.cargo-cache
+*.tgz
+*.stackdump
+report.*.json
+*.pdb
+
+# additional platform-specific files
+Desktop.ini
+*.lnk
+*.icloud
+Icon
+
+# test and coverage reports
+junit.xml
+report.json
+
+# build and compilation outputs
+*.exe
+*.dll
+*.so
+*.dylib
