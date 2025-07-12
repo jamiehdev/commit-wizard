@@ -46,7 +46,7 @@ jobs:
           cache-dependency-path: commit-wizard-napi/package-lock.json
 
       - name: install rust
-        uses: dtolnay/rust-toolchain@1.80.0
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: ${{ matrix.settings.target }}
           components: clippy
