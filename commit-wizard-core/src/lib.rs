@@ -731,12 +731,31 @@ fn open_editor_for_message(current_message: &str) -> Result<Option<String>> {
         ed
     } else {
         // fallback to first available editor
-        let candidates = ["code -w", "nvim", "vim", "vi", "nano"];
-        candidates
-            .iter()
-            .find(|&&cand| which(cand.split_whitespace().next().unwrap()).is_ok())
-            .map(|&s| s.to_string())
-            .unwrap_or_else(|| "nano".to_string())
+        // prioritise editors that are more commonly available on different platforms
+        let candidates = [
+            "vim",        // usually available on macos/linux by default
+            "vi",         // universal fallback
+            "nvim",       // popular modern alternative
+            "code -w",    // vscode (if installed and configured)
+            "nano",       // simple fallback
+        ];
+        
+        let mut selected_editor = None;
+        for &candidate in &candidates {
+            let command = candidate.split_whitespace().next().unwrap();
+            if which(command).is_ok() {
+                selected_editor = Some(candidate.to_string());
+                break;
+            }
+        }
+        
+        match selected_editor {
+            Some(editor) => editor,
+            None => {
+                println!("{}", style("no suitable editor found, falling back to nano").yellow());
+                "nano".to_string()
+            }
+        }
     };
 
     // Split the editor string into command and arguments if any (e.g., "code -w")
@@ -1482,7 +1501,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
 
     println!(
         "{}",
-        style("🔍 Testing git diff processing...").cyan().bold()
+        style("🔍 testing git diff processing...").cyan().bold()
     );
 
     let repo_path = args.path.as_deref().unwrap_or(".");
@@ -1499,7 +1518,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
 
     // get staged files first
     let staged_files = crate::git::get_staged_files(repo_path)?;
-    println!("📄 Staged files found: {}", staged_files.len());
+    println!("📄 staged files found: {}", staged_files.len());
     for (i, file) in staged_files.iter().enumerate() {
         println!("  {}. {}", i + 1, file);
     }
@@ -1507,13 +1526,13 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     if staged_files.is_empty() {
         println!(
             "{}",
-            style("⚠️  No staged files found. Add files with 'git add' first.").yellow()
+            style("⚠️  no staged files found. add files with 'git add' first.").yellow()
         );
         return Ok(("test completed - no staged files".to_string(), false));
     }
 
     // test diff analysis
-    println!("\n{}", style("🔬 Analysing diffs...").cyan());
+    println!("\n{}", style("🔬 analysing diffs...").cyan());
     let diff_info = match crate::git::get_diff_info(
         repo_path,
         args.max_size * 1024,
@@ -1524,7 +1543,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         Err(e) => {
             println!(
                 "{}",
-                style(&format!("❌ Git diff analysis failed: {}", e))
+                style(&format!("❌ git diff analysis failed: {}", e))
                     .red()
                     .bold()
             );
@@ -1534,16 +1553,16 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
 
     println!(
         "{}",
-        style("✅ Git diff processing successful!").green().bold()
+        style("✅ git diff processing successful!").green().bold()
     );
-    println!("📊 Analysis results:");
-    println!("  └─ Files processed: {}", diff_info.files.len());
+    println!("📊 analysis results:");
+    println!("  └─ files processed: {}", diff_info.files.len());
     println!(
-        "  └─ Total added lines: {}",
+        "  └─ total added lines: {}",
         diff_info.files.iter().map(|f| f.added_lines).sum::<usize>()
     );
     println!(
-        "  └─ Total removed lines: {}",
+        "  └─ total removed lines: {}",
         diff_info
             .files
             .iter()
@@ -1552,7 +1571,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     );
 
     if args.verbose {
-        println!("\n{}", style("📝 Detailed file analysis:").cyan());
+        println!("\n{}", style("📝 detailed file analysis:").cyan());
         for (i, file) in diff_info.files.iter().enumerate() {
             println!(
                 "  {}. {} (+{} -{}) [{:?}]",
@@ -1568,7 +1587,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
                     .iter()
                     .map(|h| format!("{:?}", h))
                     .collect();
-                println!("     Hints: {}", hint_strings.join(", "));
+                println!("     hints: {}", hint_strings.join(", "));
             }
         }
     }
@@ -1576,27 +1595,27 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     // test commit intelligence analysis
     println!(
         "\n{}",
-        style("🧠 Testing commit intelligence analysis...").cyan()
+        style("🧠 testing commit intelligence analysis...").cyan()
     );
     let intelligence = crate::ai::analyse_commit_intelligence(&diff_info);
-    println!("✅ Intelligence analysis successful!");
-    println!("📈 Intelligence results:");
+    println!("✅ intelligence analysis successful!");
+    println!("📈 intelligence results:");
     println!(
-        "  └─ Complexity score: {:.1}/5.0",
+        "  └─ complexity score: {:.1}/5.0",
         intelligence.complexity_score
     );
-    println!("  └─ Suggested type: {}", intelligence.commit_type_hint);
+    println!("  └─ suggested type: {}", intelligence.commit_type_hint);
     if let Some(scope) = &intelligence.scope_hint {
-        println!("  └─ Suggested scope: {}", scope);
+        println!("  └─ suggested scope: {}", scope);
     }
-    println!("  └─ Requires body: {}", intelligence.requires_body);
+    println!("  └─ requires body: {}", intelligence.requires_body);
     println!(
-        "  └─ Patterns detected: {}",
+        "  └─ patterns detected: {}",
         intelligence.detected_patterns.len()
     );
 
     if args.verbose && !intelligence.detected_patterns.is_empty() {
-        println!("  └─ Pattern details:");
+        println!("  └─ pattern details:");
         for pattern in &intelligence.detected_patterns {
             println!(
                 "     • {} (impact: {:.1})",
@@ -1608,41 +1627,47 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     // test AI commit message generation
     println!(
         "\n{}",
-        style("🤖 Testing AI commit message generation...").cyan()
+        style("🤖 testing ai commit message generation...").cyan()
     );
-    
+
     // load config for AI generation
     let config = match load_config() {
         Ok(config) => config,
         Err(e) => {
             println!(
                 "{}",
-                style(&format!("⚠️  Failed to load config: {}", e)).yellow()
+                style(&format!("⚠️  failed to load config: {}", e)).yellow()
             );
             // create a default config for testing
             Config::default()
         }
     };
 
+    // load .env file for testing
+    dotenv().ok();
+
     // check for API key
     let api_key = std::env::var("OPENROUTER_API_KEY").ok();
     if api_key.is_none() || api_key.as_ref().unwrap().trim().is_empty() {
         println!(
             "{}",
-            style("⚠️  OPENROUTER_API_KEY not set, skipping AI generation test").yellow()
+            style("⚠️  openrouter_api_key not set, skipping ai generation test").yellow()
         );
         println!(
             "{}",
-            style("💡 Set OPENROUTER_API_KEY environment variable to test AI generation").dim()
+            style("💡 set openrouter_api_key environment variable to test ai generation").dim()
         );
-        
+
         println!(
             "\n{}",
-            style("🎉 All tests passed! Git diff processing is working correctly.")
+            style("🎉 all tests passed! git diff processing is working correctly.")
                 .green()
                 .bold()
         );
-        return Ok(("test completed successfully - no AI generation (no API key)".to_string(), false));
+        return Ok((
+            "test completed successfully - no AI generation (no API key)".to_string(),
+            false,
+        ));
     }
 
     // generate commit message using AI
@@ -1656,48 +1681,56 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     .await
     {
         Ok(message) => {
-            println!("✅ AI commit message generation successful!");
+            println!("✅ ai commit message generation successful!");
             message
         }
         Err(e) => {
             println!(
                 "{}",
-                style(&format!("❌ AI generation failed: {}", e)).red()
+                style(&format!("❌ ai generation failed: {}", e)).red()
             );
             // still consider the test successful if only AI generation fails
             println!(
                 "\n{}",
-                style("🎉 Core tests passed! Git diff processing is working correctly.")
+                style("🎉 core tests passed! git diff processing is working correctly.")
                     .green()
                     .bold()
             );
-            return Ok(("test completed successfully - AI generation failed".to_string(), false));
+            return Ok((
+                "test completed successfully - AI generation failed".to_string(),
+                false,
+            ));
         }
     };
 
     // display generated commit message
-    println!("\n{}", style("📝 Generated commit message:").green().bold());
+    println!("\n{}", style("📝 generated commit message:").green().bold());
     println!("{}", style("─".repeat(50)).dim());
     println!("{}", style(&commit_message).yellow());
     println!("{}", style("─".repeat(50)).dim());
-    
+
     // validate the generated message
     if let Err(e) = crate::ai::validate_commit_message(&commit_message) {
         println!(
             "{}",
-            style(&format!("⚠️  Generated message validation warning: {}", e)).yellow()
+            style(&format!("⚠️  generated message validation warning: {}", e)).yellow()
         );
     } else {
-        println!("{}", style("✅ Generated message passes validation").green());
+        println!(
+            "{}",
+            style("✅ generated message passes validation").green()
+        );
     }
 
     // optionally commit the generated message
     let commit_successful = if args.auto_commit {
         println!(
             "\n{}",
-            style("🚀 Auto-committing generated message...").cyan().bold()
+            style("🚀 auto-committing generated message...")
+                .cyan()
+                .bold()
         );
-        
+
         let repo_dir_path = if repo_path == "." {
             std::env::current_dir().context("Failed to get current directory")?
         } else {
@@ -1711,7 +1744,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
             .context("Failed to execute git commit command")?;
 
         if output.status.success() {
-            println!("{}", style("✅ Commit successful!").green().bold());
+            println!("{}", style("✅ commit successful!").green().bold());
             if let Ok(stdout) = String::from_utf8(output.stdout) {
                 if !stdout.trim().is_empty() {
                     println!("{}", stdout);
@@ -1719,7 +1752,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
             }
             true
         } else {
-            println!("{}", style("❌ Commit failed:").red().bold());
+            println!("{}", style("❌ commit failed:").red().bold());
             if let Ok(stderr) = String::from_utf8(output.stderr) {
                 if !stderr.trim().is_empty() {
                     println!("{}", stderr);
@@ -1733,7 +1766,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
 
     println!(
         "\n{}",
-        style("🎉 All tests passed! Git diff processing and AI generation working correctly.")
+        style("🎉 all tests passed! git diff processing and ai generation working correctly.")
             .green()
             .bold()
     );

@@ -152,14 +152,14 @@ pub async fn generate_conventional_commit_with_model(
     let prompt = construct_intelligent_prompt(diff_info, &intelligence);
 
     if debug {
-        println!("🐛 debug: Commit intelligence analysis:");
+        println!("🐛 debug: commit intelligence analysis:");
         println!(
-            "  └─ Complexity score: {:.1}/5.0",
+            "  └─ complexity score: {:.1}/5.0",
             intelligence.complexity_score
         );
-        println!("  └─ Requires body: {}", intelligence.requires_body);
+        println!("  └─ requires body: {}", intelligence.requires_body);
         println!(
-            "  └─ Detected patterns: {}",
+            "  └─ detected patterns: {}",
             intelligence.detected_patterns.len()
         );
         for pattern in &intelligence.detected_patterns {
@@ -170,13 +170,13 @@ pub async fn generate_conventional_commit_with_model(
                 pattern.impact
             );
         }
-        println!("  └─ Suggested type: {}", intelligence.commit_type_hint);
+        println!("  └─ suggested type: {}", intelligence.commit_type_hint);
         if let Some(scope) = &intelligence.scope_hint {
-            println!("  └─ Suggested scope: {}", scope);
+            println!("  └─ suggested scope: {}", scope);
         }
         println!();
 
-        println!("🐛 debug: File analysis summary:");
+        println!("🐛 debug: file analysis summary:");
         for (i, file) in diff_info.files.iter().enumerate() {
             if i >= 3 {
                 println!("  ... and {} more files", diff_info.files.len() - i);
@@ -197,7 +197,7 @@ pub async fn generate_conventional_commit_with_model(
                 extract_meaningful_diff_lines(&file.diff_content, lines_to_include);
             if !meaningful_diff.is_empty() {
                 println!(
-                    "     📝 Diff sent to AI ({} lines):",
+                    "     📝 diff sent to ai ({} lines):",
                     meaningful_diff.lines().count()
                 );
                 for (j, line) in meaningful_diff.lines().enumerate() {
@@ -208,7 +208,7 @@ pub async fn generate_conventional_commit_with_model(
                         }
                         std::cmp::Ordering::Equal => {
                             println!(
-                                "       ... ({} more lines sent to AI)",
+                                "       ... ({} more lines sent to ai)",
                                 meaningful_diff.lines().count() - 3
                             );
                             break;
@@ -220,7 +220,7 @@ pub async fn generate_conventional_commit_with_model(
         }
         println!();
 
-        println!("🐛 debug: Full prompt being sent to AI:");
+        println!("🐛 debug: full prompt being sent to ai:");
         println!("═══════════════════════════════════════");
         println!("{}", prompt);
         println!("═══════════════════════════════════════");
@@ -271,7 +271,7 @@ pub async fn generate_conventional_commit_with_model(
         };
 
         if debug {
-            println!("🐛 debug: Raw API response:");
+            println!("🐛 debug: raw api response:");
             println!("═══════════════════════════════════════");
             println!("{}", raw_response);
             println!("═══════════════════════════════════════");
@@ -282,7 +282,7 @@ pub async fn generate_conventional_commit_with_model(
         let commit_msg = post_process_commit_message(&commit_msg);
 
         if debug {
-            println!("🐛 debug: Extracted and processed commit message:");
+            println!("🐛 debug: extracted and processed commit message:");
             println!("═══════════════════════════════════════");
             println!("'{}", commit_msg);
             println!("═══════════════════════════════════════");
@@ -311,7 +311,7 @@ pub async fn generate_conventional_commit_with_model(
                 } else if retry_count < max_retries {
                     retry_count += 1;
                     if debug {
-                        println!("⚠️  Generated type '{}' doesn't match expected '{}', retrying ({}/{})\n", generated_type, expected_type, retry_count, max_retries);
+                        println!("⚠️  generated type '{}' doesn't match expected '{}', retrying ({}/{})\n", generated_type, expected_type, retry_count, max_retries);
                     }
                     continue;
                 } else {
@@ -2337,10 +2337,10 @@ pub fn validate_commit_message(msg: &str) -> Result<()> {
             && (scope.contains(' ')
                 || !scope
                     .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_'))
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ','))
         {
             return Err(anyhow::anyhow!(
-                "invalid scope '{}', must be a noun (alphanumeric, hyphens, or underscores only)",
+                "invalid scope '{}', must be a noun (alphanumeric, hyphens, underscores, or commas only)",
                 scope
             ));
         }
