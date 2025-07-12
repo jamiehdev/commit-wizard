@@ -1,6 +1,6 @@
 {
   "name": "@jamiehdev/commit-wizard",
-  ""version": "1.3.2"",
+  "version": "1.3.2",
   "description": "ai-powered conventional commit message generator. Analyses your git changes and suggests commit messages.",
   "keywords": [
     "git",

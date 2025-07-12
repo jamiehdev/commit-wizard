@@ -162,7 +162,7 @@ fn write_package_json_version(path: &Path, ver: &Version) -> Result<()> {
         return Ok(()); // nothing to do
     }
     let text = fs::read_to_string(path)?;
-    let re = Regex::new(r#""version":\s*"([^"]+)""#).unwrap();
+    let re = Regex::new(r#""version":\s*"[^"]+""#).unwrap();
     let updated = re.replace(&text, format!("\"version\": \"{}\"", ver));
     fs::write(path, updated.as_bytes())?;
     Ok(())
