@@ -25,7 +25,7 @@ jobs:
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             platform: linux-x64-gnu
-          - host: macos-latest
+          - host: macos-13
             target: x86_64-apple-darwin
             platform: darwin-x64
           - host: macos-latest
@@ -47,6 +47,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.settings.target }}
+      
+      - name: install openssl for cross-compilation
+        if: matrix.settings.target == 'x86_64-apple-darwin' && runner.os == 'macOS'
+        run: |
+          # Install OpenSSL via Homebrew
+          brew install openssl@3
+          
+          # Set environment variables for cross-compilation
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+          
+          # Also set target-specific environment variables
+          echo "X86_64_APPLE_DARWIN_OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "X86_64_APPLE_DARWIN_OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
+          echo "X86_64_APPLE_DARWIN_OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
       
       - name: build napi module
         shell: bash
