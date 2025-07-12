@@ -5,7 +5,6 @@ use regex::Regex;
 use semver::{Prerelease, Version};
 use std::env;
 use std::fs;
-use std::path::Path;
 use std::process::{exit, Command};
 
 /// entrypoint – parse args then run
