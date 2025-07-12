@@ -301,8 +301,6 @@ async fn run_generate_and_commit_flow(
     if repo.is_bare() {
         return Err(anyhow::anyhow!("bare repositories not supported"));
     }
-<<<<<<< HEAD
-    
 if args.smart_model {
         println!("{}", style("🤖 smart model selection enabled").green());
         println!(

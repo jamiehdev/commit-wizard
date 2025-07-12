@@ -262,9 +262,7 @@ pub async fn generate_conventional_commit_with_model(
             Ok(resp) => resp,
             Err(e) => break Err(e),
         };
-<<<<<<< HEAD
-        
-let raw_response = match response.choices.first() {
+        let raw_response = match response.choices.first() {
             Some(choice) => choice.message.content.clone(),
             None => {
                 eprintln!("Warning: Empty choices in response");
@@ -273,7 +271,6 @@ let raw_response = match response.choices.first() {
         };
 
         if debug {
-<<<<<<< HEAD
             println!("🐛 debug: Raw API response:");
             println!("═══════════════════════════════════════");
             println!("{}", raw_response);
@@ -285,7 +282,6 @@ let raw_response = match response.choices.first() {
         let commit_msg = post_process_commit_message(&commit_msg);
 
         if debug {
-<<<<<<< HEAD
             println!("🐛 debug: Extracted and processed commit message:");
             println!("═══════════════════════════════════════");
             println!("'{}", commit_msg);
@@ -293,7 +289,6 @@ let raw_response = match response.choices.first() {
             println!();
         }
 
-<<<<<<< HEAD
         // Check if type matches hint
         let generated_type = commit_msg
             .split(':')
@@ -382,7 +377,6 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
                         if attempt < max_retries - 1 {
                             eprintln!(
                                 "Retryable error ({}): {}. Retrying in {:?}...",
-<<<<<<< HEAD
                                 status, error_text, retry_delay
                             );
                             sleep(retry_delay).await;
@@ -396,11 +390,9 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
                         ));
                     }
 
-<<<<<<< HEAD
                     return Err(anyhow::anyhow!(
                         "openrouter api error ({}): {}",
-                        status,
-                        error_text
+                        status, error_text
                     ));
                 }
             }
@@ -411,7 +403,6 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
                     retry_delay *= 2;
                     continue;
                 } else {
-<<<<<<< HEAD
                     return Err(anyhow::anyhow!(
                         "failed to send request to openrouter api: {}",
                         e
@@ -2014,8 +2005,6 @@ fn is_important_line(line: &str) -> bool {
         return true;
     }
 
-<<<<<<< HEAD
-=======
     // constants and configuration
     if line_clean.contains("const ")
         || line_clean.contains("static ")
@@ -2033,7 +2022,6 @@ fn is_important_line(line: &str) -> bool {
     false
 }
 
->>>>>>> 628684e (fix(core): major codebase restructuring and security improvements)
 fn format_pattern_type(pattern_type: &PatternType) -> &'static str {
     match pattern_type {
         PatternType::NewFilePattern => "new files",
@@ -2126,13 +2114,9 @@ fn normalize_commit_format(msg: &str) -> String {
 
 /// extract commit message from ai response
 fn extract_commit_message(response: &str) -> String {
-<<<<<<< HEAD
-    let response = response.trim().trim_matches(|c: char| c == '"' || c == '`' || c == '*');
-=======
     let response = response
         .trim()
         .trim_matches(|c: char| c == '"' || c == '`' || c == '*');
->>>>>>> 628684e (fix(core): major codebase restructuring and security improvements)
     let lines: Vec<&str> = response.lines().collect();
     let mut commit_lines = Vec::new();
     let mut found_commit_start = false;
@@ -2311,11 +2295,6 @@ fn validate_commit_message(msg: &str) -> Result<()> {
     ];
 
     let has_scope = first_line.contains('(') && first_line.contains(')');
-<<<<<<< HEAD
-    
-=======
-
->>>>>>> 628684e (fix(core): major codebase restructuring and security improvements)
     if has_scope {
         // format: type(scope): description or type(scope)!: description
         let parts: Vec<&str> = first_line.splitn(2, '(').collect();
