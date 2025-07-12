@@ -21,6 +21,11 @@ jobs:
       - name: set up rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: configure git user
+        run: |
+          git config --global user.name "jamie"
+          git config --global user.email "jamie@prettypragmatic.com"
+
       - name: run release tool
         run: cargo run --bin release-tool
 
