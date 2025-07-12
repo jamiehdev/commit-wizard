@@ -733,13 +733,13 @@ fn open_editor_for_message(current_message: &str) -> Result<Option<String>> {
         // fallback to first available editor
         // prioritise editors that are more commonly available on different platforms
         let candidates = [
-            "vim",        // usually available on macos/linux by default
-            "vi",         // universal fallback
-            "nvim",       // popular modern alternative
-            "code -w",    // vscode (if installed and configured)
-            "nano",       // simple fallback
+            "vim",     // usually available on macos/linux by default
+            "vi",      // universal fallback
+            "nvim",    // popular modern alternative
+            "code -w", // vscode (if installed and configured)
+            "nano",    // simple fallback
         ];
-        
+
         let mut selected_editor = None;
         for &candidate in &candidates {
             let command = candidate.split_whitespace().next().unwrap();
@@ -748,11 +748,14 @@ fn open_editor_for_message(current_message: &str) -> Result<Option<String>> {
                 break;
             }
         }
-        
+
         match selected_editor {
             Some(editor) => editor,
             None => {
-                println!("{}", style("no suitable editor found, falling back to nano").yellow());
+                println!(
+                    "{}",
+                    style("no suitable editor found, falling back to nano").yellow()
+                );
                 "nano".to_string()
             }
         }
