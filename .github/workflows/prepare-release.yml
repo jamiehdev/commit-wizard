@@ -22,7 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: run release tool
-        run: cargo run --workspace --bin release-tool
+        run: cargo run --bin release-tool
 
       - name: push changes and tags
         run: |
