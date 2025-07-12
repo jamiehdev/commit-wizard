@@ -1,3 +1,9 @@
+## v1.4.2
+
+- chore(release): v1.4.0
+- chore(ci): update rust toolchain to 1.88.0
+- fix: security and performance enhancements
+
 ## v1.4.0
 
 - chore(ci): update rust toolchain to 1.88.0
