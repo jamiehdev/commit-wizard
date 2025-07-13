@@ -14,9 +14,6 @@ on:
     branches:
       - main
 
-env:
-  RUST_VERSION: 1.86.0
-
 jobs:
   build:
     name: build - ${{ matrix.settings.target }} (${{ matrix.settings.host }})
@@ -49,7 +46,7 @@ jobs:
           cache-dependency-path: commit-wizard-napi/package-lock.json
 
       - name: install rust
-        uses: dtolnay/rust-toolchain@${{ env.RUST_VERSION }}
+        uses: dtolnay/rust-toolchain@1.86.0
         with:
           targets: ${{ matrix.settings.target }}
           components: clippy
@@ -63,9 +60,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ env.RUST_VERSION }}-
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: install and run cargo-audit
         run: |
@@ -81,35 +76,20 @@ jobs:
       - name: install and run cargo-tarpaulin for coverage
         if: matrix.settings.host == 'ubuntu-latest'
         run: |
-          cargo install cargo-tarpaulin --force
+          cargo install cargo-tarpaulin
           cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html
 
       - name: upload coverage report
-        if: always() && matrix.settings.host == 'ubuntu-latest'
+        if: matrix.settings.host == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: tarpaulin-report.html
 
-      - name: cache homebrew on macos
-        if: runner.os == 'macOS'
-        uses: actions/cache@v4
-        with:
-          path: |
-            /opt/homebrew/Cellar/openssl@3
-            /usr/local/Cellar/openssl@3
-          key: ${{ runner.os }}-${{ matrix.settings.host }}-homebrew-openssl-3.5.1
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.settings.host }}-homebrew-openssl-
-
-      - name: install and configure openssl on macos
+      - name: install openssl on macos
         if: runner.os == 'macOS'
         run: |
-          # Install if not already present
-          if ! brew list openssl@3 &>/dev/null; then
-            brew install openssl@3
-          fi
-          
+          brew install openssl@3
           OPENSSL_PATH=$(brew --prefix openssl@3)
           echo "OPENSSL_DIR=$OPENSSL_PATH" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$OPENSSL_PATH/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
@@ -144,7 +124,6 @@ jobs:
           fi
       
       - name: upload napi artifacts
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.platform }}
@@ -152,7 +131,6 @@ jobs:
           if-no-files-found: error
       
       - name: upload rust binary artifacts
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rust-binary-${{ matrix.settings.target }}
