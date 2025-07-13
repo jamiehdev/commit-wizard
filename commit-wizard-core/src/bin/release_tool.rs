@@ -209,13 +209,7 @@ fn commit_and_tag(repo: &Repository, ver: &Version) -> Result<()> {
 
     // create tag
     let obj = repo.revparse_single("HEAD")?;
-    repo.tag(
-        &format!("v{ver}"),
-        &obj,
-        &sig,
-        &format!("v{ver}"),
-        false,
-    )?;
+    repo.tag(&format!("v{ver}"), &obj, &sig, &format!("v{ver}"), false)?;
 
     Ok(())
 }

@@ -62,6 +62,17 @@ async function syncVersions() {
     const oldVersion = packageJson.version;
     packageJson.version = version;
     
+    // also sync optionalDependencies to keep platform packages in sync
+    if (packageJson.optionalDependencies) {
+      const platformPackages = Object.keys(packageJson.optionalDependencies);
+      for (const pkg of platformPackages) {
+        if (pkg.startsWith('@jamiehdev/commit-wizard-')) {
+          packageJson.optionalDependencies[pkg] = version;
+        }
+      }
+      console.log(`✅ synced ${platformPackages.length} optionalDependencies to version ${version}`);
+    }
+    
     // write back with proper formatting
     const updatedContent = JSON.stringify(packageJson, null, 2) + '\n';
     await fs.writeFile(packagePath, updatedContent);

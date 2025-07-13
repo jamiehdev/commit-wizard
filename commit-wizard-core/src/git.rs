@@ -423,9 +423,7 @@ fn process_diff(
         Err(e) if e.code() == git2::ErrorCode::User => {
             // early termination due to max_files limit reached - this is expected
             if verbose {
-                println!(
-                    "reached maximum file limit ({max_files}), processing truncated"
-                );
+                println!("reached maximum file limit ({max_files}), processing truncated");
             }
         }
         Err(e) => return Err(e.into()),

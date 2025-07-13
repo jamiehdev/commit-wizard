@@ -46,6 +46,7 @@ jobs:
           cache-dependency-path: commit-wizard-napi/package-lock.json
 
       - name: install rust
+        id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.settings.target }}
@@ -60,12 +61,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.settings.target }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: install and run cargo-audit
         run: |
           cargo install cargo-audit --force
-          cargo audit
+          cargo audit --deny critical,high
 
       - name: run clippy
         run: cargo clippy -- -D warnings
@@ -77,18 +78,48 @@ jobs:
         if: matrix.settings.host == 'ubuntu-latest'
         run: |
           cargo install cargo-tarpaulin --force
-          cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html
+          cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html --out Json
 
       - name: upload coverage report
         if: matrix.settings.host == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: tarpaulin-report.html
+          path: |
+            tarpaulin-report.html
+            tarpaulin-report.json
+
+      - name: add coverage summary
+        if: matrix.settings.host == 'ubuntu-latest'
+        run: |
+          echo "## Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+          
+          # extract coverage percentage from json
+          if [ -f tarpaulin-report.json ]; then
+            COVERAGE=$(cat tarpaulin-report.json | grep -o '"coverage":[0-9.]*' | cut -d':' -f2)
+            if [ ! -z "$COVERAGE" ]; then
+              COVERAGE_PERCENT=$(echo "$COVERAGE * 100" | bc -l | cut -d'.' -f1)
+              echo "Overall coverage: **${COVERAGE_PERCENT}%**" >> $GITHUB_STEP_SUMMARY
+              
+              # add coverage badge colour
+              if [ "$COVERAGE_PERCENT" -ge 80 ]; then
+                echo "🟢 Good coverage" >> $GITHUB_STEP_SUMMARY
+              elif [ "$COVERAGE_PERCENT" -ge 60 ]; then
+                echo "🟡 Moderate coverage" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "🔴 Low coverage" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Full HTML report available in artifacts." >> $GITHUB_STEP_SUMMARY
 
       - name: install openssl on macos
         if: runner.os == 'macOS'
         run: |
+          # note: consider using vendored openssl feature to avoid brew installation
+          # add openssl = { version = "0.10", features = ["vendored"] } to Cargo.toml
           brew install openssl@3
           OPENSSL_PATH=$(brew --prefix openssl@3)
           echo "OPENSSL_DIR=$OPENSSL_PATH" >> $GITHUB_ENV
@@ -171,7 +202,14 @@ jobs:
           cd commit-wizard-napi
           npm install
           npm run prepare_for_prepublish
-          npm publish --access public
+          
+          # only publish from tags, not from forks or pull requests
+          if [[ "${{ github.repository }}" == "jamiehdev/commit-wizard" && "${{ github.ref_type }}" == "tag" ]]; then
+            npm publish --access public
+            echo "✅ published to npm"
+          else
+            echo "⚠️ skipping npm publish (not a tag on main repository)"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       

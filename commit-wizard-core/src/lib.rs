@@ -1585,11 +1585,8 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
                 file.file_type
             );
             if !file.change_hints.is_empty() {
-                let hint_strings: Vec<String> = file
-                    .change_hints
-                    .iter()
-                    .map(|h| format!("{h:?}"))
-                    .collect();
+                let hint_strings: Vec<String> =
+                    file.change_hints.iter().map(|h| format!("{h:?}")).collect();
                 println!("     hints: {}", hint_strings.join(", "));
             }
         }
@@ -1688,10 +1685,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
             message
         }
         Err(e) => {
-            println!(
-                "{}",
-                style(&format!("❌ ai generation failed: {e}")).red()
-            );
+            println!("{}", style(&format!("❌ ai generation failed: {e}")).red());
             // still consider the test successful if only AI generation fails
             println!(
                 "\n{}",
