@@ -7,7 +7,7 @@ members = [
 resolver = "2" # Good practice for modern workspaces
 
 [workspace.package]
-version = "1.4.2"
+version = "1.4.3"
 authors = ["jamie (jamiehdev)"]
 license = "MIT"
 edition = "2021"
