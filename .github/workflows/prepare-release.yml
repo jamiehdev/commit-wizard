@@ -27,27 +27,28 @@ jobs:
           git config --global user.email "jamie@prettypragmatic.com"
 
       - name: run release tool
+        id: run_release_tool
         if: github.ref == 'refs/heads/main'
         run: |
           echo "Running release tool for main branch..."
+          
+          # get commit hash before running release-tool
+          BEFORE_COMMIT=$(git rev-parse HEAD)
+          
           if ! cargo run --bin release-tool; then
             echo "::error::Release tool failed on main branch"
             exit 1
           fi
           echo "Release tool completed successfully"
           
-          # extract version from workspace Cargo.toml for commit message
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "Detected version: $VERSION"
-          
-          # stage and commit all changes made by release-tool
-          git add -A
-          if [[ $(git status --porcelain) ]]; then
-            git commit -m "chore(release): v$VERSION"
-            git tag "v$VERSION"
-            echo "Created commit and tag for v$VERSION"
+          # check if release-tool created a new commit
+          AFTER_COMMIT=$(git rev-parse HEAD)
+          if [[ "$BEFORE_COMMIT" != "$AFTER_COMMIT" ]]; then
+            echo "Release tool created new commit: $AFTER_COMMIT"
+            echo "release_created=true" >> $GITHUB_OUTPUT
           else
-            echo "No changes to commit"
+            echo "No release created (no releasable changes detected)"
+            echo "release_created=false" >> $GITHUB_OUTPUT
           fi
 
       - name: run release tool (dry run)
@@ -60,22 +61,10 @@ jobs:
           fi
           echo "Release tool dry run completed successfully"
 
-      - name: check for changes to push
-        id: check_changes
-        run: |
-          if [[ $(git status --porcelain) ]]; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "Changes detected:"
-            git status --short
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No changes to push"
-          fi
-
       - name: push changes and tags
-        if: steps.check_changes.outputs.has_changes == 'true'
+        if: steps.run_release_tool.outputs.release_created == 'true'
         run: |
-          echo "Pushing changes and tags..."
+          echo "Pushing release commit and tags..."
           git push origin HEAD
           git push origin --tags
-          echo "Successfully pushed changes and tags" 
+          echo "Successfully pushed release commit and tags" 
