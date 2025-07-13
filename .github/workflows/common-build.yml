@@ -66,7 +66,7 @@ jobs:
       - name: install and run cargo-audit
         run: |
           cargo install cargo-audit --force
-          cargo audit --deny critical,high
+          cargo audit
 
       - name: run clippy
         run: cargo clippy -- -D warnings
