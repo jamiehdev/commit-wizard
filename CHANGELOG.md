@@ -1,3 +1,8 @@
+## v1.4.4
+
+- fix: use inline format args to satisfy Clippy
+- chore(release): prepare v1.4.3
+
 ## v1.4.2
 
 - chore(release): v1.4.0
