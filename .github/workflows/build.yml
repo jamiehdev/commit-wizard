@@ -85,7 +85,7 @@ jobs:
           cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html
 
       - name: upload coverage report
-        if: matrix.settings.host == 'ubuntu-latest' && always()
+        if: always() && matrix.settings.host == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
