@@ -1,3 +1,18 @@
+## v1.7.0
+
+- fix(ci): remove main branch trigger from ci.yml to eliminate redundancy
+- fix(ci): streamline workflows and fix NAPI build ordering
+- fix: correct cargo audit syntax in CI workflow
+- chore(release): v1.6.0
+- feat: restructure CI/CD workflows to eliminate redundant runs
+- chore: update Cargo.lock for v1.5.0
+- chore(release): v1.5.0
+- fix: improve CI/CD pipeline reliability and workflow consistency
+- feat: implement version sync script for npm/cargo consistency
+- chore(release): v1.4.4
+- fix: use inline format args to satisfy Clippy
+- chore(release): prepare v1.4.3
+
 ## v1.6.0
 
 - feat: restructure CI/CD workflows to eliminate redundant runs
