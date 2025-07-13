@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/*
+      - develop
+      - release/*
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+
+jobs:
+  # Skip CI if this is a tag push (releases handle their own validation)
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: check if should run CI
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Skipping CI for tag push - handled by release workflow"
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✅ Running CI for branch/PR validation"
+          fi
+
+  validate:
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_run == 'true'
+    uses: ./.github/workflows/common-build.yml
+    with:
+      upload_artifacts: false  # CI doesn't need artifacts, just validation
+      run_coverage: true       # Generate coverage for PR feedback
