@@ -114,7 +114,7 @@ pub fn get_diff_info(
                         let line_count = content.lines().count();
 
                         if verbose {
-                            println!("adding new file: {} ({} lines)", path_str, line_count);
+                            println!("adding new file: {path_str} ({line_count} lines)");
                         }
 
                         // add file to the list
@@ -122,7 +122,7 @@ pub fn get_diff_info(
                             path: path_str.to_string(),
                             added_lines: line_count,
                             removed_lines: 0,
-                            diff_content: format!("+{}", content),
+                            diff_content: format!("+{content}"),
                             file_type: classify_file_type(path_str),
                             change_hints: analyse_change_hints(&content, true),
                         });
@@ -191,7 +191,7 @@ pub fn get_diff_info(
         if !file.diff_content.is_empty() {
             let key_changes = extract_key_changes(&file.diff_content);
             if !key_changes.is_empty() {
-                summary.push_str(&format!("\n    key changes: {}", key_changes));
+                summary.push_str(&format!("\n    key changes: {key_changes}"));
             }
         }
         summary.push('\n');
@@ -233,7 +233,7 @@ fn extract_key_changes(diff_content: &str) -> String {
                             &line[fn_pos + name_start + 1..fn_pos + name_start + 1 + name_end];
                         if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')
                         {
-                            changes.push(format!("add function {}", name));
+                            changes.push(format!("add function {name}"));
                         }
                     }
                 }
@@ -386,7 +386,7 @@ fn process_diff(
             // skip binary files
             if delta.new_file().is_binary() || delta.old_file().is_binary() {
                 if verbose {
-                    println!("skipping binary file: {}", path);
+                    println!("skipping binary file: {path}");
                 }
                 return true;
             }
@@ -424,8 +424,7 @@ fn process_diff(
             // early termination due to max_files limit reached - this is expected
             if verbose {
                 println!(
-                    "reached maximum file limit ({}), processing truncated",
-                    max_files
+                    "reached maximum file limit ({max_files}), processing truncated"
                 );
             }
         }

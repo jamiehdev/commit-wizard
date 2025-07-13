@@ -30,7 +30,7 @@ pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
   let core_args = match CoreCliArgs::try_parse_from(&full_argv) {
     Ok(args) => args,
     Err(e) => {
-      let err_msg = format!("argument parsing error: {}\nensure you are passing arguments correctly. for example: commit-wizard --path . --yes", e);
+      let err_msg = format!("argument parsing error: {e}\nensure you are passing arguments correctly. for example: commit-wizard --path . --yes");
       eprintln!("{}", style(&err_msg).red().bold());
       return Err(napi::Error::new(Status::InvalidArg, err_msg));
     }
@@ -51,7 +51,7 @@ pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
     Err(e) => {
       // the core function already prints detailed errors.
       // we can provide a more generic NAPI layer error here.
-      let napi_err_msg = format!("NAPI: error during commit wizard execution: {}", e);
+      let napi_err_msg = format!("NAPI: error during commit wizard execution: {e}");
       eprintln!("{}", style(&napi_err_msg).red().bold());
       Err(napi::Error::new(Status::GenericFailure, napi_err_msg))
     }

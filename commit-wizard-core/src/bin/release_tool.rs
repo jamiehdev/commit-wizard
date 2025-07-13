@@ -154,7 +154,7 @@ fn run_version_sync_script() -> Result<()> {
 
     // print the script output for visibility
     let stdout = String::from_utf8_lossy(&output.stdout);
-    print!("{}", stdout);
+    print!("{stdout}");
 
     Ok(())
 }
@@ -163,21 +163,21 @@ fn write_cargo_version(ver: &Version) -> Result<()> {
     let cargo_toml_path = "Cargo.toml";
     let content = fs::read_to_string(cargo_toml_path)?;
     let re = Regex::new(r#"version\s*=\s*"([^"]+)""#).unwrap();
-    let new_content = re.replace(&content, format!("version = \"{}\"", ver));
+    let new_content = re.replace(&content, format!("version = \"{ver}\""));
     fs::write(cargo_toml_path, new_content.as_bytes())?;
     Ok(())
 }
 
 /// prepend entries to changelog file
 fn prepend_changelog(commits: &[Commit], ver: &Version) -> Result<()> {
-    let mut section = format!("## v{}\n\n", ver);
+    let mut section = format!("## v{ver}\n\n");
     for commit in commits {
         section.push_str(&format!("- {}\n", commit.summary().unwrap_or("")));
     }
     section.push('\n');
 
     let existing = fs::read_to_string("CHANGELOG.md").unwrap_or_default();
-    fs::write("CHANGELOG.md", format!("{}{}", section, existing))?;
+    fs::write("CHANGELOG.md", format!("{section}{existing}"))?;
     Ok(())
 }
 
@@ -202,7 +202,7 @@ fn commit_and_tag(repo: &Repository, ver: &Version) -> Result<()> {
         Some("HEAD"),
         &sig,
         &sig,
-        &format!("chore(release): v{}", ver),
+        &format!("chore(release): v{ver}"),
         &tree,
         &[&head_commit],
     )?;
@@ -210,10 +210,10 @@ fn commit_and_tag(repo: &Repository, ver: &Version) -> Result<()> {
     // create tag
     let obj = repo.revparse_single("HEAD")?;
     repo.tag(
-        &format!("v{}", ver),
+        &format!("v{ver}"),
         &obj,
         &sig,
-        &format!("v{}", ver),
+        &format!("v{ver}"),
         false,
     )?;
 

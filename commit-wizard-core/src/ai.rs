@@ -141,12 +141,12 @@ pub async fn generate_conventional_commit_with_model(
     };
 
     if debug {
-        println!("🤖 selected model:\n{}", model);
+        println!("🤖 selected model:\n{model}");
         println!();
     }
 
     // update spinner message
-    spinner.set_message(format!("🧙 generating commit message with {}...", model));
+    spinner.set_message(format!("🧙 generating commit message with {model}..."));
 
     // construct intelligent prompt
     let prompt = construct_intelligent_prompt(diff_info, &intelligence);
@@ -172,7 +172,7 @@ pub async fn generate_conventional_commit_with_model(
         }
         println!("  └─ suggested type: {}", intelligence.commit_type_hint);
         if let Some(scope) = &intelligence.scope_hint {
-            println!("  └─ suggested scope: {}", scope);
+            println!("  └─ suggested scope: {scope}");
         }
         println!();
 
@@ -204,7 +204,7 @@ pub async fn generate_conventional_commit_with_model(
                     match j.cmp(&3) {
                         std::cmp::Ordering::Less => {
                             // show first 3 lines as sample
-                            println!("       {}", line);
+                            println!("       {line}");
                         }
                         std::cmp::Ordering::Equal => {
                             println!(
@@ -222,7 +222,7 @@ pub async fn generate_conventional_commit_with_model(
 
         println!("🐛 debug: full prompt being sent to ai:");
         println!("═══════════════════════════════════════");
-        println!("{}", prompt);
+        println!("{prompt}");
         println!("═══════════════════════════════════════");
         println!();
     }
@@ -273,7 +273,7 @@ pub async fn generate_conventional_commit_with_model(
         if debug {
             println!("🐛 debug: raw api response:");
             println!("═══════════════════════════════════════");
-            println!("{}", raw_response);
+            println!("{raw_response}");
             println!("═══════════════════════════════════════");
             println!();
         }
@@ -284,7 +284,7 @@ pub async fn generate_conventional_commit_with_model(
         if debug {
             println!("🐛 debug: extracted and processed commit message:");
             println!("═══════════════════════════════════════");
-            println!("'{}", commit_msg);
+            println!("'{commit_msg}");
             println!("═══════════════════════════════════════");
             println!();
         }
@@ -311,7 +311,7 @@ pub async fn generate_conventional_commit_with_model(
                 } else if retry_count < max_retries {
                     retry_count += 1;
                     if debug {
-                        println!("⚠️  generated type '{}' doesn't match expected '{}', retrying ({}/{})\n", generated_type, expected_type, retry_count, max_retries);
+                        println!("⚠️  generated type '{generated_type}' doesn't match expected '{expected_type}', retrying ({retry_count}/{max_retries})\n");
                     }
                     continue;
                 } else {
@@ -323,8 +323,7 @@ pub async fn generate_conventional_commit_with_model(
                     retry_count += 1;
                     if debug {
                         println!(
-                            "⚠️  description too long, retrying ({}/{})\n",
-                            retry_count, max_retries
+                            "⚠️  description too long, retrying ({retry_count}/{max_retries})\n"
                         );
                     }
                     continue;
@@ -352,7 +351,7 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
 
         let response = client
             .post("https://openrouter.ai/api/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Authorization", format!("Bearer {api_key}"))
             .header("Content-Type", "application/json")
             .json(&request)
             .send()
@@ -376,8 +375,7 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
                     if status.is_server_error() || status == 429 {
                         if attempt < max_retries - 1 {
                             eprintln!(
-                                "Retryable error ({}): {}. Retrying in {:?}...",
-                                status, error_text, retry_delay
+                                "Retryable error ({status}): {error_text}. Retrying in {retry_delay:?}..."
                             );
                             sleep(retry_delay).await;
                             retry_delay *= 2;
@@ -399,7 +397,7 @@ async fn make_api_request(api_key: &str, request: OpenRouterRequest) -> Result<O
             }
             Err(e) => {
                 if attempt < max_retries - 1 {
-                    eprintln!("Network error: {}. Retrying in {:?}...", e, retry_delay);
+                    eprintln!("Network error: {e}. Retrying in {retry_delay:?}...");
                     sleep(retry_delay).await;
                     retry_delay *= 2;
                     continue;
@@ -1395,8 +1393,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
     let dominant_language = infer_dominant_language(diff_info);
     if dominant_language != "Unknown" {
         prompt.push_str(&format!(
-            "\n🌐 LANGUAGE CONTEXT: Primarily {} code - tailor examples accordingly.\n",
-            dominant_language
+            "\n🌐 LANGUAGE CONTEXT: Primarily {dominant_language} code - tailor examples accordingly.\n"
         ));
     }
 
@@ -1416,7 +1413,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
     prompt.push_str("📝 RECOMMENDED COMMIT STRUCTURE (choose best fit based on code analysis):\n");
     prompt.push_str(&format!("type: {}\n", intelligence.commit_type_hint));
     if let Some(scope) = &intelligence.scope_hint {
-        prompt.push_str(&format!("scope: {}\n", scope));
+        prompt.push_str(&format!("scope: {scope}\n"));
     }
     prompt.push_str("\nRATIONALE FOR RECOMMENDATION:\n");
     prompt.push_str(&format!(
@@ -1448,7 +1445,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
     if intelligence.requires_body && !intelligence.suggested_bullets.is_empty() {
         prompt.push_str("📌 SUGGESTED BULLET POINTS FOR BODY:\n");
         for bullet in &intelligence.suggested_bullets {
-            prompt.push_str(&format!("- {}\n", bullet));
+            prompt.push_str(&format!("- {bullet}\n"));
         }
         prompt.push('\n');
     }
@@ -1498,8 +1495,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         let skipped_files = diff_info.files.len() - important_files.len();
         if skipped_files > 0 {
             prompt.push_str(&format!(
-                "\n... and {} more files (auto-generated/less important)\n",
-                skipped_files
+                "\n... and {skipped_files} more files (auto-generated/less important)\n"
             ));
         }
     }
@@ -1526,7 +1522,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         let scope_str = intelligence
             .scope_hint
             .as_ref()
-            .map_or("".to_string(), |s| format!("({})", s));
+            .map_or("".to_string(), |s| format!("({s})"));
 
         // tailor examples based on language and patterns
         if dominant_language.starts_with("Mixed") {
@@ -1600,25 +1596,22 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
         let scope_str = intelligence
             .scope_hint
             .as_ref()
-            .map_or("".to_string(), |s| format!("({})", s));
+            .map_or("".to_string(), |s| format!("({s})"));
 
         if dominant_language.starts_with("Mixed") {
             // mixed language examples
             match intelligence.commit_type_hint.as_str() {
                 "feat" => {
                     prompt.push_str(&format!(
-                        "feat{}: add cross-platform authentication service\n",
-                        scope_str
+                        "feat{scope_str}: add cross-platform authentication service\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}: implement shared config management\n",
-                        scope_str
+                        "feat{scope_str}: implement shared config management\n"
                     ));
                 }
                 "fix" => {
                     prompt.push_str(&format!(
-                        "fix{}: resolve data synchronisation between frontend and backend\n",
-                        scope_str
+                        "fix{scope_str}: resolve data synchronisation between frontend and backend\n"
                     ));
                 }
                 _ => {
@@ -1635,72 +1628,57 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
             ) {
                 ("feat", "Rust") => {
                     prompt.push_str(&format!(
-                        "feat{}: add deprecation detection in pattern analysis\n",
-                        scope_str
+                        "feat{scope_str}: add deprecation detection in pattern analysis\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}: implement Result-based error propagation\n",
-                        scope_str
+                        "feat{scope_str}: implement Result-based error propagation\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}!: introduce breaking changes to public api\n",
-                        scope_str
+                        "feat{scope_str}!: introduce breaking changes to public api\n"
                     ));
                 }
                 ("feat", "JavaScript/TypeScript") => {
                     prompt.push_str(&format!(
-                        "feat{}: add dark mode toggle with context provider\n",
-                        scope_str
+                        "feat{scope_str}: add dark mode toggle with context provider\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}: implement responsive navigation component\n",
-                        scope_str
+                        "feat{scope_str}: implement responsive navigation component\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}!: migrate to new routing architecture\n",
-                        scope_str
+                        "feat{scope_str}!: migrate to new routing architecture\n"
                     ));
                 }
                 ("feat", "Python") => {
                     prompt.push_str(&format!(
-                        "feat{}: add async data validation pipeline\n",
-                        scope_str
+                        "feat{scope_str}: add async data validation pipeline\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}: implement pydantic model serialisation\n",
-                        scope_str
+                        "feat{scope_str}: implement pydantic model serialisation\n"
                     ));
                     prompt.push_str(&format!(
-                        "feat{}!: update to python 3.12 type annotations\n",
-                        scope_str
+                        "feat{scope_str}!: update to python 3.12 type annotations\n"
                     ));
                 }
                 ("fix", _) => {
                     prompt.push_str(&format!(
-                        "fix{}: resolve memory leak in diff processing\n",
-                        scope_str
+                        "fix{scope_str}: resolve memory leak in diff processing\n"
                     ));
                     prompt.push_str(&format!(
-                        "fix{}: handle edge case in api response parsing\n",
-                        scope_str
+                        "fix{scope_str}: handle edge case in api response parsing\n"
                     ));
                     prompt.push_str(&format!(
-                        "fix{}: prevent null pointer dereference\n",
-                        scope_str
+                        "fix{scope_str}: prevent null pointer dereference\n"
                     ));
                 }
                 ("refactor", _) => {
                     prompt.push_str(&format!(
-                        "refactor{}: extract validation logic into utilities\n",
-                        scope_str
+                        "refactor{scope_str}: extract validation logic into utilities\n"
                     ));
                     prompt.push_str(&format!(
-                        "refactor{}: simplify error handling patterns\n",
-                        scope_str
+                        "refactor{scope_str}: simplify error handling patterns\n"
                     ));
                     prompt.push_str(&format!(
-                        "refactor{}: consolidate duplicate file processing\n",
-                        scope_str
+                        "refactor{scope_str}: consolidate duplicate file processing\n"
                     ));
                 }
                 _ => {
@@ -2085,7 +2063,7 @@ pub fn select_model_for_complexity(
     };
 
     if debug {
-        println!("🤖 smart model selection: {} ({})", reason, model);
+        println!("🤖 smart model selection: {reason} ({model})");
     }
 
     model.to_string()
@@ -2112,7 +2090,7 @@ fn normalize_commit_format(msg: &str) -> String {
 
             // replace [scope] with (scope)
             let normalized_type_scope = type_scope.replace('[', "(").replace(']', ")");
-            return format!("{}: {}", normalized_type_scope, description);
+            return format!("{normalized_type_scope}: {description}");
         }
     }
 
@@ -2542,7 +2520,7 @@ fn post_process_commit_message(msg: &str) -> String {
         let mut description = msg[colon_pos + 1..].trim().to_string();
 
         if description.is_empty() {
-            return format!("{}: ", type_scope);
+            return format!("{type_scope}: ");
         }
 
         // ensure lowercase first letter
@@ -2564,7 +2542,7 @@ fn post_process_commit_message(msg: &str) -> String {
             }
         }
 
-        return format!("{}: {}", type_scope, description);
+        return format!("{type_scope}: {description}");
     }
 
     msg.to_string()

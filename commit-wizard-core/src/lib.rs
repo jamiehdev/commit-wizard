@@ -319,7 +319,7 @@ async fn run_generate_and_commit_flow(
                 if let Ok(files) = git::get_staged_files(&repo_path) {
                     println!("{}\n", style("staged files:").cyan().bold());
                     for file in files {
-                        println!("{}", style(format!("  - {}", file)).green());
+                        println!("{}", style(format!("  - {file}")).green());
                     }
                     println!();
                 }
@@ -624,7 +624,7 @@ async fn run_generate_and_commit_flow(
             println!("{}", style("\n✅ commit successful!").green().bold());
             if let Ok(stdout) = String::from_utf8(output.stdout) {
                 if !stdout.trim().is_empty() {
-                    println!("{}", stdout);
+                    println!("{stdout}");
                 }
             }
             commit_succeeded = true;
@@ -632,7 +632,7 @@ async fn run_generate_and_commit_flow(
             eprintln!("{}", style("\n❌ commit failed:").red().bold());
             if let Ok(stderr) = String::from_utf8(output.stderr) {
                 if !stderr.trim().is_empty() {
-                    eprintln!("{}", stderr);
+                    eprintln!("{stderr}");
                 }
             }
             return Err(anyhow::anyhow!("git commit command failed"));
@@ -773,12 +773,12 @@ fn open_editor_for_message(current_message: &str) -> Result<Option<String>> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()
-        .with_context(|| format!("failed to execute editor '{}'", editor))?;
+        .with_context(|| format!("failed to execute editor '{editor}'"))?;
 
     if !status.success() {
         eprintln!(
             "{}",
-            style(format!("editor '{}' exited with error: {}", editor, status)).yellow()
+            style(format!("editor '{editor}' exited with error: {status}")).yellow()
         );
         let _ = fs::remove_file(&tmp_path);
         return Ok(None); // Editor failed or user aborted
@@ -951,7 +951,7 @@ async fn intelligent_model_search(all_models: &[AvailableModel]) -> Result<Strin
                 "{} {} {}",
                 style("🎯").dim(),
                 style("filtering by:").dim(),
-                style(format!("'{}'", search_query)).green().bold()
+                style(format!("'{search_query}'")).green().bold()
             ));
         }
 
@@ -1026,7 +1026,7 @@ async fn intelligent_model_search(all_models: &[AvailableModel]) -> Result<Strin
                 if is_current {
                     lines.push(format!("{} {}", style("►").green().bold(), formatted_name));
                 } else {
-                    lines.push(format!("  {}", formatted_name));
+                    lines.push(format!("  {formatted_name}"));
                 }
             }
         }
@@ -1083,7 +1083,7 @@ async fn intelligent_model_search(all_models: &[AvailableModel]) -> Result<Strin
         for line in lines {
             // prepend carriage return to ensure we start at column 0 even in raw mode
             // raw mode disables automatic carriage-return on newline, so we do it manually
-            println!("\r{}", line);
+            println!("\r{line}");
         }
 
         stdout().flush()?;
@@ -1395,7 +1395,7 @@ pub async fn fetch_openrouter_models() -> Result<Vec<AvailableModel>> {
     let client = reqwest::Client::new();
     let response = client
         .get("https://openrouter.ai/api/v1/models")
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .send()
         .await
@@ -1420,7 +1420,7 @@ pub async fn fetch_openrouter_models() -> Result<Vec<AvailableModel>> {
 
     // cache the models for future use
     if let Err(e) = save_cached_models(&available_models) {
-        eprintln!("⚠️  warning: failed to cache models: {}", e);
+        eprintln!("⚠️  warning: failed to cache models: {e}");
     }
 
     Ok(available_models)
@@ -1546,7 +1546,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         Err(e) => {
             println!(
                 "{}",
-                style(&format!("❌ git diff analysis failed: {}", e))
+                style(&format!("❌ git diff analysis failed: {e}"))
                     .red()
                     .bold()
             );
@@ -1588,7 +1588,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
                 let hint_strings: Vec<String> = file
                     .change_hints
                     .iter()
-                    .map(|h| format!("{:?}", h))
+                    .map(|h| format!("{h:?}"))
                     .collect();
                 println!("     hints: {}", hint_strings.join(", "));
             }
@@ -1609,7 +1609,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     );
     println!("  └─ suggested type: {}", intelligence.commit_type_hint);
     if let Some(scope) = &intelligence.scope_hint {
-        println!("  └─ suggested scope: {}", scope);
+        println!("  └─ suggested scope: {scope}");
     }
     println!("  └─ requires body: {}", intelligence.requires_body);
     println!(
@@ -1639,7 +1639,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         Err(e) => {
             println!(
                 "{}",
-                style(&format!("⚠️  failed to load config: {}", e)).yellow()
+                style(&format!("⚠️  failed to load config: {e}")).yellow()
             );
             // create a default config for testing
             Config::default()
@@ -1690,7 +1690,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         Err(e) => {
             println!(
                 "{}",
-                style(&format!("❌ ai generation failed: {}", e)).red()
+                style(&format!("❌ ai generation failed: {e}")).red()
             );
             // still consider the test successful if only AI generation fails
             println!(
@@ -1716,7 +1716,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
     if let Err(e) = crate::ai::validate_commit_message(&commit_message) {
         println!(
             "{}",
-            style(&format!("⚠️  generated message validation warning: {}", e)).yellow()
+            style(&format!("⚠️  generated message validation warning: {e}")).yellow()
         );
     } else {
         println!(
@@ -1750,7 +1750,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
             println!("{}", style("✅ commit successful!").green().bold());
             if let Ok(stdout) = String::from_utf8(output.stdout) {
                 if !stdout.trim().is_empty() {
-                    println!("{}", stdout);
+                    println!("{stdout}");
                 }
             }
             true
@@ -1758,7 +1758,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
             println!("{}", style("❌ commit failed:").red().bold());
             if let Ok(stderr) = String::from_utf8(output.stderr) {
                 if !stderr.trim().is_empty() {
-                    println!("{}", stderr);
+                    println!("{stderr}");
                 }
             }
             false
