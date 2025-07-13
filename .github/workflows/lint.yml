@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: install commitlint
         run: npm install conventional-changelog-conventionalcommits @commitlint/config-conventional @commitlint/cli

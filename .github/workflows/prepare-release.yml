@@ -28,13 +28,40 @@ jobs:
 
       - name: run release tool
         if: github.ref == 'refs/heads/main'
-        run: cargo run --bin release-tool
+        run: |
+          echo "Running release tool for main branch..."
+          if ! cargo run --bin release-tool; then
+            echo "::error::Release tool failed on main branch"
+            exit 1
+          fi
+          echo "Release tool completed successfully"
 
       - name: run release tool (dry run)
         if: startsWith(github.ref, 'refs/heads/release/')
-        run: cargo run --bin release-tool -- --dry-run
+        run: |
+          echo "Running release tool dry run for release branch..."
+          if ! cargo run --bin release-tool -- --dry-run; then
+            echo "::error::Release tool dry run failed"
+            exit 1
+          fi
+          echo "Release tool dry run completed successfully"
+
+      - name: check for changes to push
+        id: check_changes
+        run: |
+          if [[ $(git status --porcelain) ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git status --short
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes to push"
+          fi
 
       - name: push changes and tags
+        if: steps.check_changes.outputs.has_changes == 'true'
         run: |
+          echo "Pushing changes and tags..."
           git push origin HEAD:main
-          git push origin --tags 
+          git push origin --tags
+          echo "Successfully pushed changes and tags" 
