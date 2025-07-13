@@ -35,6 +35,20 @@ jobs:
             exit 1
           fi
           echo "Release tool completed successfully"
+          
+          # extract version from workspace Cargo.toml for commit message
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Detected version: $VERSION"
+          
+          # stage and commit all changes made by release-tool
+          git add -A
+          if [[ $(git status --porcelain) ]]; then
+            git commit -m "chore(release): v$VERSION"
+            git tag "v$VERSION"
+            echo "Created commit and tag for v$VERSION"
+          else
+            echo "No changes to commit"
+          fi
 
       - name: run release tool (dry run)
         if: startsWith(github.ref, 'refs/heads/release/')
