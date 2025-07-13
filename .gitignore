@@ -53,6 +53,13 @@ junit.xml
 release-binaries/
 artifacts/
 commit-wizard-*
+# but allow the napi source directory
+!commit-wizard-napi/
+# and specifically ignore generated files within it
+commit-wizard-napi/index.js
+commit-wizard-napi/index.d.ts
+commit-wizard-napi/*.node
+commit-wizard-napi/target/
 *.tar.gz
 *.zip
 
