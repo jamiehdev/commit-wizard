@@ -2315,10 +2315,10 @@ pub fn validate_commit_message(msg: &str) -> Result<()> {
             && (scope.contains(' ')
                 || !scope
                     .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ','))
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ',' || c == '.'))
         {
             return Err(anyhow::anyhow!(
-                "invalid scope '{}', must be a noun (alphanumeric, hyphens, underscores, or commas only)",
+                "invalid scope '{}', must be a noun (alphanumeric, hyphens, underscores, commas, or dots only)",
                 scope
             ));
         }
