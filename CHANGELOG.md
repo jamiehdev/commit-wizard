@@ -1,3 +1,9 @@
+## v1.8.1
+
+- fix(validation): allow dots in commit message scope names
+- build(dependencies): update Cargo dependencies
+- chore(release): v1.8.0
+
 ## v1.8.0
 
 - fix(ci): handle release-tool's auto-commit behavior correctly
