@@ -1,3 +1,10 @@
+## v1.8.2
+
+- chore(release): v1.8.1
+- fix(validation): allow dots in commit message scope names
+- build(dependencies): update Cargo dependencies
+- chore(release): v1.8.0
+
 ## v1.8.1
 
 - fix(validation): allow dots in commit message scope names
