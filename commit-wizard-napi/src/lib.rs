@@ -53,9 +53,9 @@ pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
       // check if it's a validation error and provide more helpful feedback
       let error_str = e.to_string();
       let napi_err_msg = if error_str.contains("invalid scope") {
-        format!("NAPI: commit message validation failed - {}\nTip: Ensure the scope only contains alphanumeric characters, hyphens, underscores, dots, or forward slashes", e)
+        format!("NAPI: commit message validation failed - {e}\nTip: Ensure the scope only contains alphanumeric characters, hyphens, underscores, dots, or forward slashes")
       } else if error_str.contains("invalid format") {
-        format!("NAPI: commit message format error - {}\nExpected format: type(scope): description", e)
+        format!("NAPI: commit message format error - {e}\nExpected format: type(scope): description")
       } else {
         format!("NAPI: error during commit wizard execution: {e}")
       };
