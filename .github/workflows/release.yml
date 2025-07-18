@@ -18,6 +18,9 @@ jobs:
     needs: build
     # Enhanced safety checks: only publish from tags on the main repository
     if: success() && github.repository == 'jamiehdev/commit-wizard' && github.ref_type == 'tag'
+    permissions:
+      contents: write  # Required for creating releases
+      packages: write  # Required for publishing packages
     
     steps:
       - uses: actions/checkout@v4

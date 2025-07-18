@@ -324,8 +324,8 @@ pub async fn generate_conventional_commit_with_model(
                 if let Ok(fixed_msg) = fix_commit_format(&commit_msg) {
                     if debug {
                         println!("🔧 auto-fixed commit format:");
-                        println!("  original: {}", commit_msg);
-                        println!("  fixed: {}", fixed_msg);
+                        println!("  original: {commit_msg}");
+                        println!("  fixed: {fixed_msg}");
                     }
                     // validate the fixed message
                     if validate_commit_message(&fixed_msg).is_ok() {
@@ -1491,7 +1491,7 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
     // change context section - help ai understand what was changed
     let subsystem = detect_subsystem(diff_info);
     prompt.push_str("🔧 CHANGE CONTEXT:\n");
-    prompt.push_str(&format!("- Primary subsystem affected: {}\n", subsystem));
+    prompt.push_str(&format!("- Primary subsystem affected: {subsystem}\n"));
     prompt.push_str("- File purposes:\n");
     for (i, file) in diff_info.files.iter().enumerate() {
         if i >= 5 { 
@@ -2259,7 +2259,7 @@ fn fix_commit_format(msg: &str) -> Result<String> {
                 
                 if valid_types.contains(&actual_type) {
                     // reconstruct the message with just the type
-                    return Ok(format!("{}: {}", actual_type, after_colon));
+                    return Ok(format!("{actual_type}: {after_colon}"));
                 }
             }
         }
