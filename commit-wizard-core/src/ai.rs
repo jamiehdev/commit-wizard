@@ -304,6 +304,7 @@ pub async fn generate_conventional_commit_with_model(
             .to_string();
         let expected_type = intelligence.commit_type_hint.clone();
 
+        // first try to validate as-is
         match validate_commit_message(&commit_msg) {
             Ok(()) => {
                 if generated_type == expected_type {
@@ -319,6 +320,20 @@ pub async fn generate_conventional_commit_with_model(
                 }
             }
             Err(e) => {
+                // try to auto-fix common formatting issues
+                if let Ok(fixed_msg) = fix_commit_format(&commit_msg) {
+                    if debug {
+                        println!("🔧 auto-fixed commit format:");
+                        println!("  original: {}", commit_msg);
+                        println!("  fixed: {}", fixed_msg);
+                    }
+                    // validate the fixed message
+                    if validate_commit_message(&fixed_msg).is_ok() {
+                        break Ok(fixed_msg);
+                    }
+                }
+                
+                // if we couldn't fix it, handle specific errors
                 if e.to_string().contains("description too long") && retry_count < max_retries {
                     retry_count += 1;
                     if debug {
@@ -636,7 +651,7 @@ fn detect_universal_patterns(diff_info: &DiffInfo) -> Vec<Pattern> {
         });
     }
 
-    // new: security fix patterns
+    // new: security fix patterns - more context-aware
     let security_files: Vec<String> = diff_info
         .files
         .iter()
@@ -644,44 +659,59 @@ fn detect_universal_patterns(diff_info: &DiffInfo) -> Vec<Pattern> {
             let content_lower = file.diff_content.to_lowercase();
             let path_lower = file.path.to_lowercase();
 
-            // detect security-related keywords in diff content
-            let has_security_keywords = content_lower.contains("vulnerability")
-                || content_lower.contains("security")
+            // strong security indicators (require only one)
+            let strong_security_keywords = content_lower.contains("vulnerability")
                 || content_lower.contains("exploit")
                 || content_lower.contains("injection")
                 || content_lower.contains("xss")
                 || content_lower.contains("csrf")
-                || content_lower.contains("authentication")
-                || content_lower.contains("authorization")
-                || content_lower.contains("sanitiz")
-                || content_lower.contains("escape")
-                || content_lower.contains("validate")
+                || content_lower.contains("cve-");
+
+            // medium security indicators (require combination)
+            let auth_keywords = content_lower.contains("authentication")
+                || content_lower.contains("authorization") 
                 || content_lower.contains("permission")
-                || content_lower.contains("encrypt")
-                || content_lower.contains("hash")
-                || content_lower.contains("secret")
-                || content_lower.contains("token")
                 || content_lower.contains("credential")
-                || content_lower.contains("login")
-                || content_lower.contains("password");
+                || content_lower.contains("jwt")
+                || content_lower.contains("oauth");
+                
+            let crypto_keywords = content_lower.contains("encrypt")
+                || content_lower.contains("decrypt")
+                || content_lower.contains("hash")
+                || content_lower.contains("bcrypt")
+                || content_lower.contains("secret")
+                || content_lower.contains("token");
 
-            // detect security-related file paths
-            let has_security_paths = path_lower.contains("auth")
-                || path_lower.contains("security")
-                || path_lower.contains("permission")
-                || path_lower.contains("login")
-                || path_lower.contains("middleware")
-                || path_lower.contains("guard");
+            // weak indicators that need context
+            let weak_keywords = content_lower.contains("validate")
+                || content_lower.contains("sanitiz")
+                || content_lower.contains("escape");
 
-            // detect security fixes in commit patterns (added validations, fixes, etc.)
-            let has_security_fixes = (content_lower.contains("fix")
-                || content_lower.contains("patch"))
-                && (content_lower.contains("auth")
-                    || content_lower.contains("security")
-                    || content_lower.contains("validate")
-                    || content_lower.contains("sanitiz"));
+            // exclude false positives
+            let is_commit_validation = content_lower.contains("commit") && content_lower.contains("validat");
+            let is_test_file = path_lower.contains("test") || path_lower.contains("spec");
+            let is_doc_file = path_lower.ends_with(".md") || path_lower.ends_with(".txt");
 
-            has_security_keywords || has_security_paths || has_security_fixes
+            // security-related file paths
+            let has_security_paths = path_lower.contains("/auth/")
+                || path_lower.contains("/security/")
+                || path_lower.contains("/middleware/auth")
+                || path_lower.contains("/guards/");
+
+            // determine if this is truly security-related
+            if is_commit_validation || is_test_file || is_doc_file {
+                false // exclude these
+            } else if strong_security_keywords {
+                true // always include strong indicators
+            } else if has_security_paths && (auth_keywords || crypto_keywords) {
+                true // path + keywords combination
+            } else if auth_keywords && crypto_keywords {
+                true // multiple security domains
+            } else if weak_keywords && has_security_paths {
+                true // weak keywords only valid with security paths
+            } else {
+                false
+            }
         })
         .map(|f| f.path.clone())
         .collect();
@@ -1303,62 +1333,115 @@ fn suggest_commit_metadata(patterns: &[Pattern], diff_info: &DiffInfo) -> (Strin
     (commit_type, scope)
 }
 
-fn determine_intelligent_scope(diff_info: &DiffInfo) -> Option<String> {
-    // find the most common meaningful directory
-    let mut dir_counts: HashMap<String, usize> = HashMap::new();
-
-    for file in &diff_info.files {
-        if let Some(parent) = std::path::Path::new(&file.path).parent() {
-            // skip generic directories
-            let skip_dirs = ["src", "lib", "app", "test", "tests", "spec"];
-
-            for component in parent.components() {
-                if let Some(comp_str) = component.as_os_str().to_str() {
-                    if !skip_dirs.contains(&comp_str) && comp_str.len() > 2 {
-                        *dir_counts.entry(comp_str.to_string()).or_default() += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    // if one directory dominates, use it as scope
-    if let Some((dir, count)) = dir_counts.iter().max_by_key(|(_k, v)| *v) {
-        if *count as f32 / diff_info.files.len() as f32 > 0.5 {
-            return Some(dir.to_lowercase());
-        }
-    }
-
-    // otherwise, try to determine by file type
-    let extensions: HashSet<_> = diff_info
-        .files
-        .iter()
-        .filter_map(|f| std::path::Path::new(&f.path).extension())
-        .map(|e| e.to_string_lossy().to_string())
-        .collect();
-
-    // map common extensions to scopes
-    if extensions
-        .iter()
-        .any(|e| ["ts", "js", "tsx", "jsx"].contains(&e.as_str()))
-    {
-        if extensions
-            .iter()
-            .any(|e| ["css", "scss", "sass"].contains(&e.as_str()))
-        {
-            return Some("ui".to_string());
-        }
-        return Some("frontend".to_string());
-    }
-
-    if extensions
-        .iter()
-        .any(|e| ["cs", "java", "py", "go"].contains(&e.as_str()))
-    {
-        return Some("api".to_string());
-    }
-
+fn determine_intelligent_scope(_diff_info: &DiffInfo) -> Option<String> {
+    // instead of determining scope, we'll let the ai do it based on full context
+    // this function now just provides a hint for backwards compatibility
+    // the ai will override this with better context-aware scopes
     None
+}
+
+/// map file paths to their purpose/subsystem
+fn get_file_purpose(path: &str) -> String {
+    let path_lower = path.to_lowercase();
+    
+    // check for specific file names first
+    if path_lower.ends_with("ai.rs") || path_lower.contains("/ai/") {
+        return "AI prompt generation and commit analysis".to_string();
+    }
+    if path_lower.ends_with("git.rs") || path_lower.contains("/git/") {
+        return "Git operations and diff processing".to_string();
+    }
+    if path_lower.contains("napi") && path_lower.ends_with("lib.rs") {
+        return "Node.js bindings and NAPI integration".to_string();
+    }
+    if path_lower.ends_with("main.rs") {
+        return "CLI entry point and command handling".to_string();
+    }
+    if path_lower.contains("validation") || path_lower.contains("validate") {
+        return "Validation logic".to_string();
+    }
+    
+    // check for directory patterns
+    if path_lower.contains("/auth/") || path_lower.contains("/authentication/") {
+        return "Authentication and authorization".to_string();
+    }
+    if path_lower.contains("/api/") || path_lower.contains("/routes/") {
+        return "API endpoints and routing".to_string();
+    }
+    if path_lower.contains("/components/") || path_lower.contains("/ui/") {
+        return "UI components and frontend".to_string();
+    }
+    if path_lower.contains("/utils/") || path_lower.contains("/helpers/") {
+        return "Utility functions and helpers".to_string();
+    }
+    if path_lower.contains("/services/") {
+        return "Business logic and services".to_string();
+    }
+    if path_lower.contains("/models/") || path_lower.contains("/entities/") {
+        return "Data models and entities".to_string();
+    }
+    if path_lower.contains("/config/") || path_lower.ends_with("config.rs") {
+        return "Configuration management".to_string();
+    }
+    if path_lower.contains("/middleware/") {
+        return "Middleware and request processing".to_string();
+    }
+    
+    // check file extensions for generic purposes
+    if path_lower.ends_with(".toml") || path_lower.ends_with(".json") || path_lower.ends_with(".yaml") {
+        return "Configuration file".to_string();
+    }
+    if path_lower.ends_with(".md") || path_lower.ends_with(".txt") {
+        return "Documentation".to_string();
+    }
+    if path_lower.contains("test") || path_lower.contains("spec") {
+        return "Test file".to_string();
+    }
+    
+    // default to generic description based on extension
+    if let Some(ext) = std::path::Path::new(path).extension() {
+        match ext.to_str().unwrap_or("") {
+            "rs" => "Rust source code".to_string(),
+            "js" | "ts" => "JavaScript/TypeScript code".to_string(),
+            "py" => "Python code".to_string(),
+            "go" => "Go code".to_string(),
+            "java" => "Java code".to_string(),
+            "cs" => "C# code".to_string(),
+            _ => "Source code".to_string(),
+        }
+    } else {
+        "Project file".to_string()
+    }
+}
+
+/// detect which subsystem was primarily changed
+fn detect_subsystem(diff_info: &DiffInfo) -> String {
+    let mut subsystem_counts: HashMap<String, usize> = HashMap::new();
+    
+    for file in &diff_info.files {
+        let subsystem = if file.path.contains("commit-wizard-core") {
+            "core"
+        } else if file.path.contains("commit-wizard-cli") {
+            "cli"
+        } else if file.path.contains("commit-wizard-napi") {
+            "napi"
+        } else if file.path.contains(".github") {
+            "ci"
+        } else if file.path.ends_with(".md") {
+            "docs"
+        } else {
+            "project"
+        };
+        
+        *subsystem_counts.entry(subsystem.to_string()).or_default() += 1;
+    }
+    
+    // return the most common subsystem
+    subsystem_counts
+        .iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(subsystem, _)| subsystem.clone())
+        .unwrap_or_else(|| "project".to_string())
 }
 
 /// construct intelligent prompt using commit analysis
@@ -1409,15 +1492,63 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
     }
     prompt.push('\n');
 
+    // change context section - help ai understand what was changed
+    let subsystem = detect_subsystem(diff_info);
+    prompt.push_str("🔧 CHANGE CONTEXT:\n");
+    prompt.push_str(&format!("- Primary subsystem affected: {}\n", subsystem));
+    prompt.push_str("- File purposes:\n");
+    for (i, file) in diff_info.files.iter().enumerate() {
+        if i >= 5 { 
+            break;
+        }
+        let purpose = get_file_purpose(&file.path);
+        prompt.push_str(&format!("  * {} → {}\n", file.path, purpose));
+    }
+    prompt.push('\n');
+
     // suggested structure (made advisory)
     prompt.push_str("📝 RECOMMENDED COMMIT STRUCTURE (choose best fit based on code analysis):\n");
     prompt.push_str(&format!("type: {}\n", intelligence.commit_type_hint));
-    if let Some(scope) = &intelligence.scope_hint {
-        prompt.push_str(&format!("scope: {scope}\n"));
+    prompt.push_str("scope: [DETERMINE FROM FILE PATHS AND CONTEXT ABOVE]\n");
+    
+    prompt.push_str("\n📂 FILE PATHS AFFECTED (use these to determine the most appropriate scope):\n");
+    for (i, file) in diff_info.files.iter().enumerate() {
+        if i >= 10 { 
+            prompt.push_str(&format!("... and {} more files\n", diff_info.files.len() - 10));
+            break;
+        }
+        prompt.push_str(&format!("- {}\n", file.path));
     }
-    prompt.push_str("\nRATIONALE FOR RECOMMENDATION:\n");
+    
+    prompt.push_str("\n🎯 SCOPE DETERMINATION GUIDELINES:\n");
+    prompt.push_str("- analyse the file paths to identify the most specific, meaningful scope\n");
+    prompt.push_str("- use the actual module, component, feature, or project folder name\n");
+    prompt.push_str("- if files are in 'cuisinecentre.umbraco/Security/', use scope 'security'\n");
+    prompt.push_str("- if files are in 'my-project/auth/', use scope 'auth'\n");
+    prompt.push_str("- if files span multiple unrelated areas, omit the scope\n");
+    prompt.push_str("- prefer specific scopes over generic ones (e.g., 'auth' not 'backend')\n");
+    
+    prompt.push_str("\n⚠️ COMMON MISTAKES TO AVOID:\n");
+    prompt.push_str("- DON'T use 'security' just because validation is mentioned (unless it's actual security validation)\n");
+    prompt.push_str("- DON'T confuse commit message validation with input/data validation\n");
+    prompt.push_str("- DON'T use generic scopes like 'app', 'project', 'system', 'frontend', 'backend'\n");
+    prompt.push_str("- DON'T use file extensions as scopes (e.g., not 'rs', 'js', 'py')\n");
+    prompt.push_str("- DO consider the actual functionality being changed, not just keywords\n");
+    
+    prompt.push_str("\n📋 FORMAT EXAMPLES (follow these EXACTLY):\n");
+    prompt.push_str("✅ CORRECT formats:\n");
+    prompt.push_str("  - fix(ai): improve validation logic\n");
+    prompt.push_str("  - feat(auth,api): add oauth support\n");
+    prompt.push_str("  - fix(ai,napi): resolve parsing errors\n");
+    prompt.push_str("  - refactor: simplify error handling\n");
+    prompt.push_str("❌ WRONG formats:\n");
+    prompt.push_str("  - fix(ai, napi): improve validation ← NO SPACES after commas!\n");
+    prompt.push_str("  - fix: improve validation in ai and napi ← type field too long!\n");
+    prompt.push_str("  - fix(ai,napi) improve validation ← missing colon!\n");
+    prompt.push_str("  - Fix(ai): improve validation ← type must be lowercase!\n");
+    
     prompt.push_str(&format!(
-        "- Type '{}' suggested based on dominant patterns: {}\n",
+        "\nRATIONALE FOR TYPE RECOMMENDATION:\n- Type '{}' suggested based on patterns: {}\n",
         intelligence.commit_type_hint,
         intelligence
             .detected_patterns
@@ -1426,19 +1557,6 @@ fn construct_intelligent_prompt(diff_info: &DiffInfo, intelligence: &CommitIntel
             .collect::<Vec<_>>()
             .join(", ")
     ));
-    if let Some(scope) = &intelligence.scope_hint {
-        prompt.push_str(&format!(
-            "- Scope '{}' based on affected files: {}\n",
-            scope,
-            diff_info
-                .files
-                .iter()
-                .take(3)
-                .map(|f| f.path.clone())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
     prompt.push_str("\nALLOWED TYPES: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\n\n");
 
     // if body required, provide bullet suggestions
@@ -2079,8 +2197,19 @@ pub fn get_available_models(config: &Config) -> Vec<(&str, &str)> {
         .collect()
 }
 
-/// normalize commit message format, converting [scope] to (scope)
+/// normalize scope by removing spaces after commas
+fn normalize_scope(scope: &str) -> String {
+    // remove spaces after commas: "ai, napi, core" -> "ai,napi,core"
+    scope.split(',')
+        .map(|s| s.trim())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// normalize commit message format, converting [scope] to (scope) and fixing common issues
 fn normalize_commit_format(msg: &str) -> String {
+    let msg = msg.trim();
+    
     // convert type[scope]: description to type(scope): description
     if msg.contains('[') && msg.contains(']') && msg.contains(':') {
         let parts: Vec<&str> = msg.splitn(2, ':').collect();
@@ -2093,8 +2222,70 @@ fn normalize_commit_format(msg: &str) -> String {
             return format!("{normalized_type_scope}: {description}");
         }
     }
-
+    
+    // fix scope spacing in type(scope): description format
+    if let Some(open_paren) = msg.find('(') {
+        if let Some(close_paren) = msg.find(')') {
+            if open_paren < close_paren {
+                let prefix = &msg[..open_paren];
+                let scope = &msg[open_paren + 1..close_paren];
+                let suffix = &msg[close_paren..];
+                
+                let normalized_scope = normalize_scope(scope);
+                return format!("{prefix}({normalized_scope}{suffix}");
+            }
+        }
+    }
+    
     msg.to_string()
+}
+
+/// attempt to fix common commit format issues
+fn fix_commit_format(msg: &str) -> Result<String> {
+    let msg = msg.trim();
+    
+    // handle case where ai included too much in the type field
+    // e.g., "fix: refactored commit type detection with security patterns" 
+    // should extract just "fix" as the type
+    if let Some(first_colon) = msg.find(':') {
+        let before_colon = &msg[..first_colon];
+        let after_colon = &msg[first_colon + 1..].trim();
+        
+        // check if the type field looks too long (likely contains description)
+        if before_colon.len() > 20 && !before_colon.contains('(') {
+            // extract just the first word as the type
+            if let Some(first_space) = before_colon.find(' ') {
+                let actual_type = &before_colon[..first_space];
+                
+                // validate the extracted type
+                let valid_types = ["feat", "fix", "docs", "style", "refactor", "perf", 
+                                  "test", "build", "ci", "chore", "revert"];
+                
+                if valid_types.contains(&actual_type) {
+                    // reconstruct the message with just the type
+                    return Ok(format!("{}: {}", actual_type, after_colon));
+                }
+            }
+        }
+    }
+    
+    // apply standard normalization
+    let normalized = normalize_commit_format(msg);
+    
+    // validate the normalized message
+    match validate_commit_message(&normalized) {
+        Ok(()) => Ok(normalized),
+        Err(e) => {
+            // if it's still invalid, try one more fix for the specific error
+            if e.to_string().contains("invalid scope") && e.to_string().contains("ai, napi") {
+                // this is our specific case - scope has spaces after commas
+                let fixed = normalize_commit_format(msg);
+                Ok(fixed)
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 /// extract commit message from ai response
@@ -2315,10 +2506,10 @@ pub fn validate_commit_message(msg: &str) -> Result<()> {
             && (scope.contains(' ')
                 || !scope
                     .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ',' || c == '.'))
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ',' || c == '.' || c == '/'))
         {
             return Err(anyhow::anyhow!(
-                "invalid scope '{}', must be a noun (alphanumeric, hyphens, underscores, commas, or dots only)",
+                "invalid scope '{}', must be a noun (alphanumeric, hyphens, underscores, commas, dots, or forward slashes only)",
                 scope
             ));
         }
@@ -2599,10 +2790,17 @@ STRICT TYPE RULES - use ONLY these types:
 
 STRICT SCOPE RULES:
 - scope must be a noun describing the section of codebase being changed
-- use contextual scopes based on actual changes: parser, auth, logger, api, etc.
-- use NO scope if changes affect multiple unrelated components  
-- scope should be specific and meaningful: "parser" not "code", "auth" not "security stuff"
-- avoid generic scopes like "app", "project", "system", "general"
+- analyse file paths to determine the most contextual scope
+- examples of good scope detection from file paths:
+  * cuisinecentre.umbraco/Security/HeadersMiddleware.cs → scope: "security"
+  * my-app/components/Navigation/Header.tsx → scope: "navigation"
+  * api/src/auth/jwt/token.go → scope: "auth" or "jwt"
+  * frontend/utils/validation.js → scope: "validation"
+  * MyProject.Core/Services/EmailService.cs → scope: "email"
+- use the actual feature/module name from the file path, not generic terms
+- if files are all in one project folder (e.g., "CuisineCentre.Umbraco/"), look deeper for the specific module
+- use NO scope if changes affect multiple unrelated components
+- avoid generic scopes like "app", "project", "system", "general", "frontend", "backend"
 
 STRICT DESCRIPTION RULES:
 - max 72 characters
