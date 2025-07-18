@@ -50,8 +50,16 @@ pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
     }
     Err(e) => {
       // the core function already prints detailed errors.
-      // we can provide a more generic NAPI layer error here.
-      let napi_err_msg = format!("NAPI: error during commit wizard execution: {e}");
+      // check if it's a validation error and provide more helpful feedback
+      let error_str = e.to_string();
+      let napi_err_msg = if error_str.contains("invalid scope") {
+        format!("NAPI: commit message validation failed - {}\nTip: Ensure the scope only contains alphanumeric characters, hyphens, underscores, dots, or forward slashes", e)
+      } else if error_str.contains("invalid format") {
+        format!("NAPI: commit message format error - {}\nExpected format: type(scope): description", e)
+      } else {
+        format!("NAPI: error during commit wizard execution: {e}")
+      };
+      
       eprintln!("{}", style(&napi_err_msg).red().bold());
       Err(napi::Error::new(Status::GenericFailure, napi_err_msg))
     }
