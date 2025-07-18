@@ -1,6 +1,6 @@
 {
   "name": "@jamiehdev/commit-wizard",
-  "version": "1.8.2",
+  "version": "2.0.0",
   "description": "ai-powered conventional commit message generator. Analyses your git changes and suggests commit messages.",
   "keywords": [
     "git",
@@ -71,9 +71,9 @@
     "universal": "napi universal"
   },
   "optionalDependencies": {
-    "@jamiehdev/commit-wizard-darwin-arm64": "1.8.2",
-    "@jamiehdev/commit-wizard-darwin-x64": "1.8.2",
-    "@jamiehdev/commit-wizard-linux-x64-gnu": "1.8.2",
-    "@jamiehdev/commit-wizard-win32-x64-msvc": "1.8.2"
+    "@jamiehdev/commit-wizard-darwin-arm64": "2.0.0",
+    "@jamiehdev/commit-wizard-darwin-x64": "2.0.0",
+    "@jamiehdev/commit-wizard-linux-x64-gnu": "2.0.0",
+    "@jamiehdev/commit-wizard-win32-x64-msvc": "2.0.0"
   }
 }

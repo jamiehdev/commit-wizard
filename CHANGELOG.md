@@ -1,3 +1,7 @@
+## v2.0.0
+
+- feat(ai): improve scope detection and add formatting defense
+
 ## v1.8.2
 
 - chore(release): v1.8.1
