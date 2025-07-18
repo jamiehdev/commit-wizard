@@ -1,3 +1,13 @@
+## v2.1.0
+
+- chore(release): v2.0.0
+- feat(ai): improve scope detection and add formatting defense
+- chore(release): v1.8.2
+- chore(release): v1.8.1
+- fix(validation): allow dots in commit message scope names
+- build(dependencies): update Cargo dependencies
+- chore(release): v1.8.0
+
 ## v2.0.0
 
 - feat(ai): improve scope detection and add formatting defense
