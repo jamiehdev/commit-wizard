@@ -701,16 +701,12 @@ fn detect_universal_patterns(diff_info: &DiffInfo) -> Vec<Pattern> {
             // determine if this is truly security-related
             if is_commit_validation || is_test_file || is_doc_file {
                 false // exclude these
-            } else if strong_security_keywords {
-                true // always include strong indicators
-            } else if has_security_paths && (auth_keywords || crypto_keywords) {
-                true // path + keywords combination
-            } else if auth_keywords && crypto_keywords {
-                true // multiple security domains
-            } else if weak_keywords && has_security_paths {
-                true // weak keywords only valid with security paths
             } else {
-                false
+                // include if any of these conditions are met
+                strong_security_keywords // always include strong indicators
+                    || (has_security_paths && (auth_keywords || crypto_keywords)) // path + keywords combination
+                    || (auth_keywords && crypto_keywords) // multiple security domains
+                    || (weak_keywords && has_security_paths) // weak keywords only valid with security paths
             }
         })
         .map(|f| f.path.clone())
