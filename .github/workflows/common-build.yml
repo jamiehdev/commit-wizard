@@ -75,10 +75,8 @@ jobs:
       - name: install cargo-audit (if not cached)
         if: steps.cache-tools.outputs.cache-hit != 'true'
         run: |
-          # only install if not cached
-          if ! command -v cargo-audit &> /dev/null; then
-            cargo install cargo-audit --locked
-          fi
+          # cross-platform install - cargo install skips if already present
+          cargo install cargo-audit --locked || echo "cargo-audit already installed"
 
       - name: run cargo-audit
         run: |
@@ -94,10 +92,8 @@ jobs:
       - name: install cargo-tarpaulin for coverage (if not cached)
         if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest' && steps.cache-tools.outputs.cache-hit != 'true'
         run: |
-          # only install if not cached
-          if ! command -v cargo-tarpaulin &> /dev/null; then
-            cargo install cargo-tarpaulin --locked
-          fi
+          # cross-platform install - cargo install skips if already present
+          cargo install cargo-tarpaulin --locked || echo "cargo-tarpaulin already installed"
 
       - name: run coverage
         if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest'
