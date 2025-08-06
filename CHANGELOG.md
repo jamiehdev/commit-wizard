@@ -1,3 +1,9 @@
+## v2.4.1
+
+- fix(ci): remove skip ci from releases and prevent double-versioning
+- refactor(core,ci): major improvements to architecture and workflows
+- chore(release): v2.4.0
+
 ## v2.4.0
 
 - fix(napi): resolve clippy uninlined format args warnings
