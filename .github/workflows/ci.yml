@@ -15,27 +15,31 @@ on:
       - main
 
 jobs:
-  # Skip CI if this is a tag push (releases handle their own validation)
-  check-trigger:
+  # run commitlint on pull requests
+  commitlint:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
     steps:
-      - name: check if should run CI
-        id: check
-        run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Skipping CI for tag push - handled by release workflow"
-          else
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "✅ Running CI for branch/PR validation"
-          fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      - name: setup node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: install commitlint
+        run: npm install conventional-changelog-conventionalcommits @commitlint/config-conventional @commitlint/cli
+
+      - name: lint commits in pr
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
+  # run build and test validation
   validate:
-    needs: check-trigger
-    if: needs.check-trigger.outputs.should_run == 'true'
     uses: ./.github/workflows/common-build.yml
     with:
-      upload_artifacts: false  # CI doesn't need artifacts, just validation
-      run_coverage: true       # Generate coverage for PR feedback
+      upload_artifacts: false  # ci doesn't need artifacts, just validation
+      run_coverage: true       # generate coverage for pr feedback

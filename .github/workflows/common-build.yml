@@ -63,10 +63,26 @@ jobs:
             target/
           key: ${{ runner.os }}-${{ matrix.settings.target }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: install and run cargo-audit
+      - name: cache cargo tools
+        id: cache-tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/cargo-tarpaulin
+          key: ${{ runner.os }}-cargo-tools-v2
+
+      - name: install cargo-audit (if not cached)
+        if: steps.cache-tools.outputs.cache-hit != 'true'
         run: |
-          cargo install cargo-audit --force
-          # run cargo audit but don't fail on warnings (exit code 2)
+          # only install if not cached
+          if ! command -v cargo-audit &> /dev/null; then
+            cargo install cargo-audit --locked
+          fi
+
+      - name: run cargo-audit
+        run: |
+          # run cargo audit but don't fail on warnings
           cargo audit || true
 
       - name: run clippy
@@ -75,11 +91,17 @@ jobs:
       - name: run cargo tests
         run: cargo test
 
-      - name: install and run cargo-tarpaulin for coverage
-        if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest'
+      - name: install cargo-tarpaulin for coverage (if not cached)
+        if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest' && steps.cache-tools.outputs.cache-hit != 'true'
         run: |
-          cargo install cargo-tarpaulin --force
-          cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html --out Json
+          # only install if not cached
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin --locked
+          fi
+
+      - name: run coverage
+        if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest'
+        run: cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html --out Json
 
       - name: upload coverage report
         if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest'
@@ -115,23 +137,6 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Full HTML report available in artifacts." >> $GITHUB_STEP_SUMMARY
-
-      - name: install openssl on macos
-        if: runner.os == 'macOS'
-        run: |
-          # note: consider using vendored openssl feature to avoid brew installation
-          # add openssl = { version = "0.10", features = ["vendored"] } to Cargo.toml
-          brew install openssl@3
-          OPENSSL_PATH=$(brew --prefix openssl@3)
-          echo "OPENSSL_DIR=$OPENSSL_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$OPENSSL_PATH/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$OPENSSL_PATH/lib" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$OPENSSL_PATH/include" >> $GITHUB_ENV
-          
-          TARGET_UPPER_SNAKE=$(echo ${{ matrix.settings.target }} | tr 'a-z-' 'A-Z_')
-          echo "${TARGET_UPPER_SNAKE}_OPENSSL_DIR=$OPENSSL_PATH" >> $GITHUB_ENV
-          echo "${TARGET_UPPER_SNAKE}_OPENSSL_LIB_DIR=$OPENSSL_PATH/lib" >> $GITHUB_ENV
-          echo "${TARGET_UPPER_SNAKE}_OPENSSL_INCLUDE_DIR=$OPENSSL_PATH/include" >> $GITHUB_ENV
       
       - name: build napi module
         shell: bash
@@ -168,5 +173,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rust-binary-${{ matrix.settings.target }}
-          path: commit-wizard-*
+          path: commit-wizard-${{ matrix.settings.target }}*
           if-no-files-found: error
