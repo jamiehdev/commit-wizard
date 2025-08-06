@@ -26,9 +26,22 @@ jobs:
           git config --global user.name "jamie"
           git config --global user.email "jamie@prettypragmatic.com"
 
+      - name: check if current commit is a release commit
+        id: check_release_commit
+        if: github.ref == 'refs/heads/main'
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          if [[ "$COMMIT_MSG" == chore\(release\):* ]]; then
+            echo "Current commit is already a release commit, skipping"
+            echo "is_release_commit=true" >> $GITHUB_OUTPUT
+          else
+            echo "Not a release commit, proceeding"
+            echo "is_release_commit=false" >> $GITHUB_OUTPUT
+          fi
+      
       - name: run release tool
         id: run_release_tool
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.check_release_commit.outputs.is_release_commit != 'true'
         run: |
           echo "Running release tool for main branch..."
           

@@ -202,7 +202,7 @@ fn commit_and_tag(repo: &Repository, ver: &Version) -> Result<()> {
         Some("HEAD"),
         &sig,
         &sig,
-        &format!("chore(release): v{ver} [skip ci]"),
+        &format!("chore(release): v{ver}"),
         &tree,
         &[&head_commit],
     )?;
