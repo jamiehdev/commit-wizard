@@ -1,3 +1,7 @@
+## v2.3.1
+
+- refactor(core,ci): major improvements to architecture and workflows
+
 ## v2.3.0
 
 - fix(ci): resolve clippy warnings and add release permissions
