@@ -1,3 +1,7 @@
+## v2.5.0
+
+- feat(ci): enhance testing with AI smoke tests and improved workflows
+
 ## v2.4.1
 
 - fix(ci): remove skip ci from releases and prevent double-versioning
