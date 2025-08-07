@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 pub use std::env;
 use std::fs;
 pub use std::process::Command as StdCommand;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 pub use std::time::Duration;
 
 pub use crate::ai::{generate_conventional_commit, generate_conventional_commit_with_model};
@@ -137,6 +141,10 @@ pub struct CoreCliArgs {
     /// automatically commit the generated message when using --test-diff (for testing purposes)
     #[arg(long)]
     pub auto_commit: bool,
+
+    /// require AI generation to succeed in --test-diff mode (for CI smoke tests)
+    #[arg(long)]
+    pub ai_smoke: bool,
 }
 
 /// get a safe fallback model that should always work
@@ -229,6 +237,20 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
         ));
     }
 
+    // background refresh of model catalogue (non-blocking)
+    let is_updating_models = Arc::new(AtomicBool::new(true));
+    let just_updated_models = Arc::new(AtomicBool::new(false));
+    {
+        let updating = is_updating_models.clone();
+        let updated = just_updated_models.clone();
+        tokio::spawn(async move {
+            // refresh model cache; ignore errors silently
+            let _ = fetch_openrouter_models().await;
+            updating.store(false, Ordering::Relaxed);
+            updated.store(true, Ordering::Relaxed);
+        });
+    }
+
     // test mode: validate git diff processing without user interaction
     if args.test_diff {
         return test_git_diff_processing(&args).await;
@@ -245,20 +267,37 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
     );
 
     loop {
+        // show one-time background update completion notice
+        if just_updated_models.swap(false, Ordering::Relaxed) {
+            println!(
+                "{}",
+                style("✅ model catalogue updated in the background").green()
+            );
+        }
+
         let current_model_text = if config.auto_select {
             "auto-complexity".to_string()
         } else {
             get_current_model(&config, &args, None)
         };
 
-        let model_settings_option = format!(
-            "model settings - current: {}",
-            style(&current_model_text).yellow()
-        );
+        let model_settings_option = {
+            let updating_suffix = if is_updating_models.load(Ordering::Relaxed) {
+                style(" (updating...)").dim().to_string()
+            } else {
+                String::new()
+            };
+            format!(
+                "model settings - current: {}{}",
+                style(&current_model_text).yellow(),
+                updating_suffix
+            )
+        };
 
         let options = &[
             "generate commit message".to_string(),
             model_settings_option,
+            "refresh model catalogue now".to_string(),
             "exit".to_string(),
         ];
 
@@ -280,6 +319,33 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
                 println!(); // add a blank line for spacing before menu shows again
             }
             2 => {
+                // manual model refresh
+                let pb = ProgressBar::new_spinner();
+                pb.set_style(
+                    ProgressStyle::default_spinner()
+                        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+                        .template("{spinner:.blue} updating model catalogue...")
+                        .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+                );
+                pb.enable_steady_tick(Duration::from_millis(80));
+                match fetch_openrouter_models().await {
+                    Ok(models) => {
+                        pb.finish_and_clear();
+                        println!(
+                            "{} {} {}",
+                            style("✅").green(),
+                            style(models.len()).yellow().bold(),
+                            style("models available (catalogue refreshed)").green()
+                        );
+                    }
+                    Err(e) => {
+                        pb.finish_and_clear();
+                        eprintln!("{} {}", style("⚠️  failed to refresh models:").yellow(), e);
+                    }
+                }
+                println!();
+            }
+            3 => {
                 // Exit
                 println!("\n{}", style("👋 bye!").dim());
                 return Ok(("".to_string(), false));
@@ -1670,7 +1736,7 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         ));
     }
 
-    // generate commit message using AI
+    // generate commit message using AI (optional hard-fail via --ai-smoke)
     let commit_message = match crate::ai::generate_conventional_commit_with_model(
         &diff_info,
         args.debug,
@@ -1685,8 +1751,12 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
             message
         }
         Err(e) => {
+            if args.ai_smoke {
+                return Err(e.context(
+                    "ai smoke test failed (set OPENROUTER_API_KEY or disable --ai-smoke)",
+                ));
+            }
             println!("{}", style(&format!("❌ ai generation failed: {e}")).red());
-            // still consider the test successful if only AI generation fails
             println!(
                 "\n{}",
                 style("🎉 core tests passed! git diff processing is working correctly.")

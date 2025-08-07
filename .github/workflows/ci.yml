@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -7,39 +7,102 @@ on:
       - develop
       - release/*
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-    branches:
-      - main
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # run commitlint on pull requests
-  commitlint:
-    if: github.event_name == 'pull_request'
+  rust-unit:
+    name: rust unit & lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          fetch-depth: 0
+          components: rustfmt, clippy
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-features -- -D warnings
+      - name: tests
+        run: cargo test --workspace --all-features --no-fail-fast
 
-      - name: setup node.js
-        uses: actions/setup-node@v4
+  napi-build:
+    name: napi build (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: commit-wizard-napi/package-lock.json
+      - name: install deps
+        working-directory: commit-wizard-napi
+        run: npm ci
+      - name: build napi
+        working-directory: commit-wizard-napi
+        run: npm run build --silent
 
-      - name: install commitlint
-        run: npm install conventional-changelog-conventionalcommits @commitlint/config-conventional @commitlint/cli
+  cli-e2e:
+    name: cli e2e (test-diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+      - name: prepare temp git repo
+        run: |
+          set -euo pipefail
+          REPO=/tmp/cw-e2e
+          mkdir -p "$REPO"
+          git -C "$REPO" init
+          git -C "$REPO" config user.email "ci@example.com"
+          git -C "$REPO" config user.name "ci"
+          printf "hello world\n" > "$REPO/hello.txt"
+          git -C "$REPO" add hello.txt
+      - name: run cli in test mode (no ai required)
+        working-directory: commit-wizard-cli
+        run: cargo run -- --test-diff --verbose --path /tmp/cw-e2e
 
-      - name: lint commits in pr
-        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
-
-  # run build and test validation
-  validate:
-    uses: ./.github/workflows/common-build.yml
-    with:
-      upload_artifacts: false  # ci doesn't need artifacts, just validation
-      run_coverage: true       # generate coverage for pr feedback
+  nightly-ai-smoke:
+    if: github.event_name == 'schedule'
+    name: nightly ai smoke (optional)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+      - name: prepare temp git repo
+        run: |
+          set -euo pipefail
+          REPO=/tmp/cw-e2e
+          mkdir -p "$REPO"
+          git -C "$REPO" init
+          git -C "$REPO" config user.email "ci@example.com"
+          git -C "$REPO" config user.name "ci"
+          printf "nightly smoke\n" > "$REPO/smoke.txt"
+          git -C "$REPO" add smoke.txt
+      - name: run cli with ai smoke (requires secret)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        working-directory: commit-wizard-cli
+        run: cargo run -- --test-diff --ai-smoke --path /tmp/cw-e2e

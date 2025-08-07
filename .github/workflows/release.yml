@@ -1,11 +1,36 @@
-name: Release
+name: release
 
 on:
   push:
     tags:
-      - v*
+      - 'v*'
 
 jobs:
+  preflight:
+    name: pre-release e2e (ai optional)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+      - name: create temp repo with staged changes
+        run: |
+          set -euo pipefail
+          REPO=/tmp/cw-e2e
+          mkdir -p "$REPO"
+          git -C "$REPO" init
+          git -C "$REPO" config user.email "ci@example.com"
+          git -C "$REPO" config user.name "ci"
+          printf "line1\n" > "$REPO/demo.txt"
+          git -C "$REPO" add demo.txt
+      - name: run cli --test-diff (ai-free)
+        working-directory: commit-wizard-cli
+        run: cargo run -- --test-diff --path /tmp/cw-e2e
+
   build:
     uses: ./.github/workflows/common-build.yml
     with:
@@ -15,16 +40,13 @@ jobs:
   publish:
     name: publish
     runs-on: ubuntu-latest
-    needs: build
-    # Enhanced safety checks: only publish from tags on the main repository
+    needs: [preflight, build]
     if: success() && github.repository == 'jamiehdev/commit-wizard' && github.ref_type == 'tag'
     permissions:
-      contents: write  # Required for creating releases
-      packages: write  # Required for publishing packages
-    
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      
       - name: setup node.js
         uses: actions/setup-node@v4
         with:
@@ -32,26 +54,21 @@ jobs:
           registry-url: 'https://registry.npmjs.org/'
           cache: npm
           cache-dependency-path: commit-wizard-napi/package-lock.json
-      
       - name: download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-      
       - name: setup napi artifacts for npm
         run: |
           cp artifacts/bindings-linux-x64-gnu/*.node commit-wizard-napi/
           cp artifacts/bindings-darwin-x64/*.node commit-wizard-napi/
           cp artifacts/bindings-darwin-arm64/*.node commit-wizard-napi/
           cp artifacts/bindings-win32-x64-msvc/*.node commit-wizard-napi/
-      
       - name: publish to npm
         run: |
           cd commit-wizard-napi
           npm install
           npm run prepare_for_prepublish
-          
-          # Enhanced safety: triple-check repository and tag conditions
           if [[ "${{ github.repository }}" == "jamiehdev/commit-wizard" && "${{ github.ref_type }}" == "tag" && "${{ github.event_name }}" == "push" ]]; then
             npm publish --access public
             echo "✅ published to npm"
@@ -63,24 +80,17 @@ jobs:
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      
       - name: prepare rust binaries for github release
         run: |
           mkdir -p release-binaries
-          
-          # create archives for each platform
           cp artifacts/rust-binary-x86_64-unknown-linux-gnu/commit-wizard-x86_64-unknown-linux-gnu release-binaries/
           tar -czf release-binaries/commit-wizard-linux-x64.tar.gz -C release-binaries commit-wizard-x86_64-unknown-linux-gnu
-          
           cp artifacts/rust-binary-x86_64-apple-darwin/commit-wizard-x86_64-apple-darwin release-binaries/
           tar -czf release-binaries/commit-wizard-macos-x64.tar.gz -C release-binaries commit-wizard-x86_64-apple-darwin
-          
           cp artifacts/rust-binary-aarch64-apple-darwin/commit-wizard-aarch64-apple-darwin release-binaries/
           tar -czf release-binaries/commit-wizard-macos-arm64.tar.gz -C release-binaries commit-wizard-aarch64-apple-darwin
-          
           cp artifacts/rust-binary-x86_64-pc-windows-msvc/commit-wizard-x86_64-pc-windows-msvc.exe release-binaries/
           tar -czf release-binaries/commit-wizard-windows-x64.tar.gz -C release-binaries commit-wizard-x86_64-pc-windows-msvc.exe
-      
       - name: create github release
         uses: softprops/action-gh-release@v2
         with:
@@ -88,19 +98,19 @@ jobs:
           name: commit-wizard ${{ github.ref_name }}
           body: |
             ## commit-wizard ${{ github.ref_name }}
-            
+
             install via npm: `npm install -g @jamiehdev/commit-wizard`
-            
+
             ### standalone binaries
             download and run directly without node.js:
             - linux x64: commit-wizard-linux-x64.tar.gz
             - macos x64: commit-wizard-macos-x64.tar.gz
             - macos arm64: commit-wizard-macos-arm64.tar.gz
             - windows x64: commit-wizard-windows-x64.tar.gz
-            
+
             ### napi modules (for development)
             - linux x64: commit-wizard.linux-x64-gnu.node
-            - macos x64: commit-wizard.darwin-x64.node 
+            - macos x64: commit-wizard.darwin-x64.node
             - macos arm64: commit-wizard.darwin-arm64.node
             - windows x64: commit-wizard.win32-x64-msvc.node
           files: |

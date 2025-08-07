@@ -24,6 +24,14 @@ use super::validation::{
 struct OpenRouterRequest {
     model: String,
     messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stop: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -111,10 +119,14 @@ pub async fn generate_conventional_commit_with_model(
 
     let result = loop {
         let current_prompt = if retry_count > 0 {
-            format!("{}\n\nIMPORTANT: The description MUST be under 72 characters. Be concise!\nMUST USE TYPE: {}\nMUST USE SCOPE: {}", 
-                prompt,
-                intelligence.commit_type_hint,
-                intelligence.scope_hint.as_ref().unwrap_or(&"none".to_string())
+            let scope_line = if let Some(scope) = &intelligence.scope_hint {
+                format!("must use scope: {scope}")
+            } else {
+                "do not include a scope".to_string()
+            };
+            format!(
+                "{}\n\nimportant: the description must be under 72 characters. be concise.\nmust use type: {}\n{}",
+                prompt, intelligence.commit_type_hint, scope_line
             )
         } else {
             prompt.clone()
@@ -132,6 +144,10 @@ pub async fn generate_conventional_commit_with_model(
                     content: current_prompt,
                 },
             ],
+            temperature: Some(0.1),
+            top_p: Some(0.9),
+            max_tokens: Some(400),
+            stop: Some(vec!["</commit>".to_string()]),
         };
 
         let response = match make_api_request(&api_key, request).await {
@@ -216,6 +232,15 @@ pub async fn generate_conventional_commit_with_model(
                     if debug {
                         println!(
                             "⚠️  description too long, retrying ({retry_count}/{max_retries})\n"
+                        );
+                    }
+                    continue;
+                } else if e.to_string().contains("invalid scope") && retry_count < max_retries {
+                    // try again but force a concrete scope if we have none
+                    retry_count += 1;
+                    if debug {
+                        println!(
+                            "⚠️  invalid scope, retrying with stricter guidance ({retry_count}/{max_retries})\n"
                         );
                     }
                     continue;

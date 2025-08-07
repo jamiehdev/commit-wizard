@@ -137,6 +137,28 @@ pub fn construct_intelligent_prompt(
     prompt.push_str(&diff_info.summary);
     prompt.push('\n');
 
+    // include minified files summary first if any
+    let minified_files: Vec<_> = diff_info.files.iter().filter(|f| f.is_minified).collect();
+    if !minified_files.is_empty() {
+        prompt.push_str("\n📦 MINIFIED/BUILT FILES UPDATED:\n");
+        for file in &minified_files {
+            let size_change = match file.added_lines.cmp(&file.removed_lines) {
+                std::cmp::Ordering::Greater => {
+                    format!("+{} lines", file.added_lines - file.removed_lines)
+                }
+                std::cmp::Ordering::Less => {
+                    format!("-{} lines", file.removed_lines - file.added_lines)
+                }
+                std::cmp::Ordering::Equal => "size unchanged".to_string(),
+            };
+            prompt.push_str(&format!(
+                "- {} ({}, {} additions, {} deletions)\n",
+                file.path, size_change, file.added_lines, file.removed_lines
+            ));
+        }
+        prompt.push_str("(minified content omitted for clarity)\n\n");
+    }
+
     // include diff snippets
     if !diff_info.files.is_empty() {
         prompt.push_str("\n🔍 DIFF CONTENT (for context):\n");
@@ -148,6 +170,11 @@ pub fn construct_intelligent_prompt(
         for (i, file) in important_files.iter().enumerate() {
             if i >= 15 || total_diff_lines >= MAX_TOTAL_DIFF_LINES {
                 break;
+            }
+
+            // skip minified files in the detailed diff section (already shown above)
+            if file.is_minified {
+                continue;
             }
 
             prompt.push_str(&format!(
@@ -212,7 +239,9 @@ pub fn construct_intelligent_prompt(
     }
     prompt.push('\n');
 
-    prompt.push_str("generate the commit message now, with no additional commentary.\n");
+    // require deterministic, tagged output for robust parsing
+    prompt.push_str("output must be wrapped exactly once in <commit>...</commit> tags with no extra commentary.\n");
+    prompt.push_str("generate the commit message now.\n");
 
     prompt
 }
@@ -220,11 +249,11 @@ pub fn construct_intelligent_prompt(
 /// get system prompt based on intelligence
 pub fn get_system_prompt(intelligence: &CommitIntelligence) -> &'static str {
     if intelligence.complexity_score > 3.0 {
-        "you are an expert software engineer writing precise, detailed commit messages. analyse the code changes and generate a conventional commit message that fully explains complex architectural changes."
+        "you are an expert software engineer writing precise, detailed commit messages. only output the commit inside <commit>...</commit> tags, no extra commentary."
     } else if intelligence.requires_body {
-        "you are a senior developer creating clear commit messages. generate a conventional commit with proper type, scope, and a body with bullet points explaining the changes."
+        "you are a senior developer creating clear commit messages. only output the commit inside <commit>...</commit> tags, no extra commentary."
     } else {
-        "you are a developer writing concise commit messages. generate a single-line conventional commit message that clearly describes the change."
+        "you are a developer writing concise commit messages. only output the commit inside <commit>...</commit> tags, no extra commentary."
     }
 }
 
@@ -459,13 +488,9 @@ fn is_auto_generated_or_boring_file(path: &str) -> bool {
         return true;
     }
 
-    // generated files
-    if path_lower.contains("generated")
-        || path_lower.contains(".min.")
-        || path_lower.contains("dist/")
-        || path_lower.contains("build/")
-        || path_lower.contains("target/")
-    {
+    // generated files (but NOT minified files - they'll be handled specially)
+    // note: we're removing .min. from here since minified files are now tracked
+    if path_lower.contains("generated") || path_lower.contains("target/") {
         return true;
     }
 

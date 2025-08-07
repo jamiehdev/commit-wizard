@@ -10,6 +10,7 @@ pub struct ModifiedFile {
     pub diff_content: String,
     pub file_type: FileType,
     pub change_hints: Vec<ChangeHint>,
+    pub is_minified: bool,
 }
 
 /// categorize files by their purpose
@@ -118,13 +119,25 @@ pub fn get_diff_info(
                         }
 
                         // add file to the list
+                        let is_minified = is_minified_file(path_str, Some(&content));
+                        let diff_content = if is_minified {
+                            format!("(minified content omitted - {} lines)", line_count)
+                        } else {
+                            format!("+{content}")
+                        };
+
                         files.push(ModifiedFile {
                             path: path_str.to_string(),
                             added_lines: line_count,
                             removed_lines: 0,
-                            diff_content: format!("+{content}"),
+                            diff_content,
                             file_type: classify_file_type(path_str),
-                            change_hints: analyse_change_hints(&content, true),
+                            change_hints: if is_minified {
+                                Vec::new()
+                            } else {
+                                analyse_change_hints(&content, true)
+                            },
+                            is_minified,
                         });
 
                         // limit number of files
@@ -438,6 +451,7 @@ fn process_diff(
             diff_content: String::new(),
             file_type: classify_file_type(path),
             change_hints: Vec::new(),
+            is_minified: false, // will be determined when collecting diff content
         });
     }
 
@@ -469,15 +483,23 @@ fn process_diff(
         true
     })?;
 
-    // batch process change hints for all files
-    let change_hints: Vec<Vec<ChangeHint>> = files
-        .iter()
-        .map(|file| analyse_change_hints(&file.diff_content, false))
-        .collect();
+    // detect minified files and adjust their content
+    for file in files.iter_mut() {
+        // check if file is minified based on path and content
+        file.is_minified = is_minified_file(&file.path, Some(&file.diff_content));
 
-    // apply change hints in batch
-    for (file, hints) in files.iter_mut().zip(change_hints) {
-        file.change_hints = hints;
+        // if minified, replace diff content with summary
+        if file.is_minified {
+            let summary = format!(
+                "(minified content omitted - {} additions, {} deletions)",
+                file.added_lines, file.removed_lines
+            );
+            file.diff_content = summary;
+            file.change_hints = Vec::new(); // no hints for minified files
+        } else {
+            // only analyse change hints for non-minified files
+            file.change_hints = analyse_change_hints(&file.diff_content, false);
+        }
     }
 
     Ok(())
@@ -797,4 +819,85 @@ fn decode_line_content(content: &[u8]) -> String {
     } else {
         cow.to_string()
     }
+}
+
+/// detect if a file is minified based on its name and optionally its content
+fn is_minified_file(path: &str, content: Option<&str>) -> bool {
+    let path_lower = path.to_lowercase();
+
+    // check filename patterns for common minified file patterns
+    if path_lower.contains(".min.")
+        || path_lower.contains(".bundle.")
+        || path_lower.contains(".packed.")
+        || path_lower.contains(".prod.")
+        || path_lower.contains(".production.")
+        || path_lower.ends_with(".min.js")
+        || path_lower.ends_with(".min.css")
+        || path_lower.ends_with(".min.mjs")
+        || path_lower.ends_with("bundle.js")  // also match bundle.js without dot
+        || path_lower.ends_with("bundle.mjs")  // also match bundle.mjs without dot
+        || path_lower.ends_with(".bundle.js")
+        || path_lower.ends_with(".bundle.mjs")
+    {
+        return true;
+    }
+
+    // check if it's a js/css file in dist/build folders (often minified)
+    if (path_lower.contains("/dist/") || path_lower.contains("/build/"))
+        && (path_lower.ends_with(".js")
+            || path_lower.ends_with(".css")
+            || path_lower.ends_with(".mjs"))
+    {
+        // if we have content, check if it looks minified
+        if let Some(content) = content {
+            return looks_minified(content);
+        }
+        // assume minified if in dist/build without content to check
+        return true;
+    }
+
+    // for regular js/css files, check content if available
+    if path_lower.ends_with(".js") || path_lower.ends_with(".css") || path_lower.ends_with(".mjs") {
+        if let Some(content) = content {
+            return looks_minified(content);
+        }
+    }
+
+    false
+}
+
+/// check if content looks like minified code
+fn looks_minified(content: &str) -> bool {
+    // skip empty content
+    if content.is_empty() {
+        return false;
+    }
+
+    // get first few lines to analyse (minified files are usually single line)
+    let lines: Vec<&str> = content.lines().take(5).collect();
+
+    // if file has very few lines but lots of content, likely minified
+    if lines.len() <= 2 && content.len() > 500 {
+        // check if any line is extremely long (typical of minified files)
+        for line in &lines {
+            if line.len() > 500 {
+                return true;
+            }
+        }
+    }
+
+    // check for lack of whitespace and formatting (minified characteristics)
+    let first_line = lines.first().unwrap_or(&"");
+    if first_line.len() > 200 {
+        // count spaces vs non-spaces in first line
+        let space_count = first_line.chars().filter(|c| c.is_whitespace()).count();
+        let char_count = first_line.len();
+
+        // minified files have very low whitespace ratio
+        if char_count > 0 && (space_count as f32 / char_count as f32) < 0.05 {
+            return true;
+        }
+    }
+
+    false
 }

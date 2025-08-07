@@ -4,6 +4,15 @@ use anyhow::Result;
 
 /// extract commit message from ai response
 pub fn extract_commit_message(response: &str) -> String {
+    // first, try strict tag-based extraction if present
+    if let (Some(start), Some(end)) = (response.find("<commit>"), response.find("</commit>")) {
+        if end > start {
+            let inner = &response[start + "<commit>".len()..end];
+            let cleaned = clean_commit_message(inner);
+            return normalize_commit_format(&cleaned);
+        }
+    }
+
     let response = response
         .trim()
         .trim_matches(|c: char| c == '"' || c == '`' || c == '*');
