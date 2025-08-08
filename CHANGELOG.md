@@ -1,3 +1,9 @@
+## v2.6.0
+
+- chore: trigger release
+- chore(release): v2.5.0
+- feat(ci): enhance testing with AI smoke tests and improved workflows
+
 ## v2.5.0
 
 - feat(ci): enhance testing with AI smoke tests and improved workflows
