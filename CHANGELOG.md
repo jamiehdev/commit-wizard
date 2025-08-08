@@ -1,3 +1,10 @@
+## v2.5.1
+
+- fix(release): prevent double-bump and revert v2.6.0 (#7)
+- Revert "chore(release): v2.6.0"
+- chore(release): v2.6.0
+- chore: trigger release
+
 ## v2.5.0
 
 - feat(ci): enhance testing with AI smoke tests and improved workflows
