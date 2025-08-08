@@ -2,6 +2,7 @@
 use anyhow::{Context, Result};
 use git2::{Commit, Repository};
 use regex::Regex;
+use std::collections::HashSet;
 use semver::{Prerelease, Version};
 use std::env;
 use std::fs;
@@ -98,26 +99,37 @@ fn classify_commits(commits: &[Commit]) -> CommitAnalysis {
 
 /// get commits since last semver tag (vX.Y.Z)
 fn commits_since_last_tag(repo: &Repository) -> Result<Vec<Commit>> {
-    let mut list = Vec::new();
-    let mut revwalk = repo.revwalk()?;
-    revwalk.push_head()?;
+    // pre-compute the set of commit ids that are the target of semver tags
+    let semver = Regex::new(r"^v\d+\.\d+\.\d+$").unwrap();
+    let mut tagged_commit_ids: HashSet<git2::Oid> = HashSet::new();
 
-    let tag_re = Regex::new(r"^v\d+\.\d+\.\d+$").unwrap();
-    for id in revwalk {
-        let id = id?;
-        let commit = repo.find_commit(id)?;
-        // stop if commit has a semver tag
-        let tags = repo.tag_names(None)?;
-        for name in tags.iter().flatten() {
-            if let Ok(obj) = repo.revparse_single(name) {
-                if obj.id() == commit.id() && tag_re.is_match(name) {
-                    return Ok(list);
-                }
+    let tag_names = repo.tag_names(None)?;
+    for name in tag_names.iter().flatten() {
+        if !semver.is_match(name) {
+            continue;
+        }
+        // resolve the tag reference and peel to the commit it points at
+        let refname = format!("refs/tags/{name}");
+        if let Ok(obj) = repo.revparse_single(&refname) {
+            if let Ok(commit) = obj.peel_to_commit() {
+                tagged_commit_ids.insert(commit.id());
             }
         }
-        list.push(commit);
     }
-    Ok(list)
+
+    let mut commits = Vec::new();
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
+    for oid in revwalk {
+        let oid = oid?;
+        let commit = repo.find_commit(oid)?;
+        if tagged_commit_ids.contains(&commit.id()) {
+            // we've reached the last tagged release; stop collecting
+            return Ok(commits);
+        }
+        commits.push(commit);
+    }
+    Ok(commits)
 }
 
 /// read the workspace version from the root cargo.toml
