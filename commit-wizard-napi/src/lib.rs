@@ -51,7 +51,9 @@ pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
       // the core function already prints detailed errors.
       // check if it's a validation error and provide more helpful feedback
       let error_str = e.to_string();
-      let napi_err_msg = if error_str.contains("invalid scope") {
+      let napi_err_msg = if error_str.contains("no changes detected") {
+        "no changes to commit - stage some changes with 'git add' first".to_string()
+      } else if error_str.contains("invalid scope") {
         format!("NAPI: commit message validation failed - {e}\nTip: Ensure the scope only contains alphanumeric characters, hyphens, underscores, dots, or forward slashes")
       } else if error_str.contains("invalid format") {
         format!(
