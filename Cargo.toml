@@ -2,7 +2,6 @@
 members = [
     "commit-wizard-core",
     "commit-wizard-cli",
-    "commit-wizard-napi",
 ]
 resolver = "2" # Good practice for modern workspaces
 

@@ -39,22 +39,21 @@ jobs:
       - name: eval fixtures (ai-free)
         run: cargo run --bin eval-tool -- --fixtures fixtures/eval --min-type-accuracy 0.8 --min-scope-accuracy 0.8 --headless-json
 
-  napi-build:
-    name: napi build (node)
+  npm-wrapper-smoke:
+    name: npm wrapper smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: commit-wizard-napi/package-lock.json
-      - name: install deps
-        working-directory: commit-wizard-napi
-        run: npm ci
-      - name: build napi
-        working-directory: commit-wizard-napi
-        run: npm run build --silent
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build cli binary
+        run: cargo build --bin commit-wizard
+      - name: run wrapper with local binary
+        env:
+          COMMIT_WIZARD_BINARY: target/debug/commit-wizard
+        run: node commit-wizard-napi/bin.js --help
 
   cli-e2e:
     name: cli e2e (test-diff)

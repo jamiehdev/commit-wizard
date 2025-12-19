@@ -46,6 +46,8 @@ install via npm:
 npm i -g @jamiehdev/commit-wizard
 ```
 
+> **note:** the npm package ships prebuilt rust binaries and uses a thin node launcher (no native addons).
+
 set your OpenRouter API key:
 
 ```shell
@@ -345,7 +347,7 @@ this project is committed to high standards of code quality and release reliabil
 
 | check | tool | description |
 |---|---|---|
-| **unit & integration tests** | `cargo test` & `npm test` | validates that core rust logic and node.js bindings are working correctly across all supported platforms (linux, macos, windows). |
+| **unit & integration tests** | `cargo test` & node wrapper smoke | validates that core rust logic and the npm binary wrapper work correctly across all supported platforms (linux, macos, windows). |
 | **code quality linting** | `clippy` | automatically checks for common rust pitfalls and ensures the code is idiomatic and performant. |
 | **security vulnerability scanning** | `cargo audit` | scans all rust dependencies for known security vulnerabilities to prevent supply chain attacks. |
 | **commit message linting** | `commitlint` | enforces that every commit in a pull request follows the conventional commits specification. |
@@ -378,7 +380,7 @@ this project uses a semi-automated release process driven by github actions. her
 
 1.  **preparation**: for a new release, a maintainer will typically bump the version numbers in `cargo.toml` and `package.json` and run a local script to update the `changelog.md`.
 2.  **triggering the release**: the release process is triggered when a new tag is pushed to the repository in the format `v*` (e.g., `v1.4.0`).
-3.  **automation**: the `build & release` workflow automatically builds the binaries and napi modules for all platforms, runs tests, and publishes the release to both github and npm.
+3.  **automation**: the `build & release` workflow automatically builds the binaries for all platforms, runs tests, and publishes the release to both github and npm.
 
 if you are contributing, you do not need to worry about this process. simply create a pull request with your changes, and a maintainer will handle the release.
 

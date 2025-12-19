@@ -1,79 +1,103 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from "fs/promises";
+import path from "path";
 
-// Read main package.json
-const mainPackageJsonPath = path.resolve('package.json');
-const mainPackageJsonContent = await fs.readFile(mainPackageJsonPath, 'utf8');
+const rootDir = process.cwd();
+const mainPackageJsonPath = path.join(rootDir, "package.json");
+const mainPackageJsonContent = await fs.readFile(mainPackageJsonPath, "utf8");
 const mainPackage = JSON.parse(mainPackageJsonContent);
 
 const version = mainPackage.version;
-const mainName = mainPackage.name; // e.g., @jamiehdev/commit-wizard
-const napiBinaryName = mainPackage.napi.name; // e.g., commit-wizard-napi
-
-// Get the platform from command line args or default to the current platform
+const artifactsDir =
+  process.env.CW_ARTIFACTS_DIR || path.resolve(rootDir, "artifacts");
 const platformArg = process.argv[2];
 
-// Define all supported platforms with their configurations
 const platforms = {
-  'linux-x64-gnu': { os: 'linux', cpu: 'x64' },
-  'darwin-x64': { os: 'darwin', cpu: 'x64' },
-  'darwin-arm64': { os: 'darwin', cpu: 'arm64' },
-  'win32-x64-msvc': { os: 'win32', cpu: 'x64' }
+  "linux-x64-gnu": {
+    os: "linux",
+    cpu: "x64",
+    target: "x86_64-unknown-linux-gnu",
+    binaryName: "commit-wizard",
+  },
+  "darwin-x64": {
+    os: "darwin",
+    cpu: "x64",
+    target: "x86_64-apple-darwin",
+    binaryName: "commit-wizard",
+  },
+  "darwin-arm64": {
+    os: "darwin",
+    cpu: "arm64",
+    target: "aarch64-apple-darwin",
+    binaryName: "commit-wizard",
+  },
+  "win32-x64-msvc": {
+    os: "win32",
+    cpu: "x64",
+    target: "x86_64-pc-windows-msvc",
+    binaryName: "commit-wizard.exe",
+  },
 };
 
-// If a specific platform is provided, only process that one
-const platformsToProcess = platformArg ? 
-  (platforms[platformArg] ? { [platformArg]: platforms[platformArg] } : {}) : 
-  platforms;
+const platformsToProcess = platformArg
+  ? platforms[platformArg]
+    ? { [platformArg]: platforms[platformArg] }
+    : {}
+  : platforms;
 
 if (platformArg && !platforms[platformArg]) {
-  console.error(`Error: Unknown platform "${platformArg}". Supported platforms are: ${Object.keys(platforms).join(', ')}`);
+  console.error(
+    `Error: Unknown platform "${platformArg}". Supported platforms are: ${Object.keys(
+      platforms
+    ).join(", ")}`
+  );
   process.exit(1);
 }
 
-// Process each platform
-for (const [platformTriple, { os, cpu }] of Object.entries(platformsToProcess)) {
+for (const [platformTriple, platformInfo] of Object.entries(
+  platformsToProcess
+)) {
+  const { os, cpu, target, binaryName } = platformInfo;
+  const artifactDir = path.join(artifactsDir, `rust-binary-${target}`);
+  const sourceBinary = path.join(artifactDir, `commit-wizard-${target}`);
+  const sourcePath =
+    binaryName.endsWith(".exe") ? `${sourceBinary}.exe` : sourceBinary;
+
   try {
-    const artifactName = `${napiBinaryName}.${platformTriple}.node`; // e.g., commit-wizard-napi.linux-x64-gnu.node
-    
-    // Construct the final package name
-    const finalSubPackageName = `@jamiehdev/commit-wizard-${platformTriple}`;
-    
-    const npmDir = path.resolve('npm', platformTriple);
-    await fs.mkdir(npmDir, { recursive: true });
-    
-    // Copy the .node file if it exists
-    const sourceNodeFile = path.resolve(artifactName);
-    const destNodeFile = path.join(npmDir, artifactName);
-    
-    // Check if source .node file exists (it should have been built by `npm run build`)
-    try {
-      await fs.access(sourceNodeFile);
-      await fs.copyFile(sourceNodeFile, destNodeFile);
-      console.log(`Copied ${sourceNodeFile} to ${destNodeFile}`);
-    } catch (e) {
-      console.warn(`Warning: Source .node file ${sourceNodeFile} not found. This platform may not be built yet.`);
-      // Continue with other platforms instead of exiting
-      continue;
-    }
-    
-    // Create the sub-package.json
-    const subPackageJson = {
-      name: finalSubPackageName,
-      version: version,
-      os: [os],
-      cpu: [cpu],
-      main: artifactName,
-      files: [artifactName],
-    };
-    
-    const subPackageJsonPath = path.join(npmDir, 'package.json');
-    await fs.writeFile(subPackageJsonPath, JSON.stringify(subPackageJson, null, 2));
-    
-    console.log(`Prepared ${finalSubPackageName} in ${npmDir}`);
+    await fs.access(sourcePath);
   } catch (error) {
-    console.error(`Error processing platform ${platformTriple}:`, error);
+    console.error(
+      `Missing binary for ${platformTriple} at ${sourcePath}. Set CW_ARTIFACTS_DIR if artifacts are elsewhere.`
+    );
+    process.exit(1);
   }
+
+  const npmDir = path.join(rootDir, "npm", platformTriple);
+  await fs.mkdir(npmDir, { recursive: true });
+  const destBinary = path.join(npmDir, binaryName);
+  await fs.copyFile(sourcePath, destBinary);
+
+  if (os !== "win32") {
+    await fs.chmod(destBinary, 0o755);
+  }
+
+  const subPackageJson = {
+    name: `@jamiehdev/commit-wizard-${platformTriple}`,
+    version,
+    os: [os],
+    cpu: [cpu],
+    bin: {
+      "commit-wizard": binaryName,
+    },
+    files: [binaryName],
+  };
+
+  const subPackageJsonPath = path.join(npmDir, "package.json");
+  await fs.writeFile(
+    subPackageJsonPath,
+    JSON.stringify(subPackageJson, null, 2)
+  );
+
+  console.log(`Prepared ${platformTriple} package in ${npmDir}`);
 }
 
-console.log('Preparation complete for all platforms.');
+console.log("✅ platform package preparation complete");
