@@ -1,0 +1,69 @@
+[
+  {
+    "id": "docs-readme",
+    "description": "doc-only change should force docs",
+    "files": [
+      {
+        "path": "README.md",
+        "diff": "+add headless usage example\n"
+      }
+    ],
+    "expected": {
+      "type": "docs"
+    }
+  },
+  {
+    "id": "ci-workflow",
+    "description": "workflow-only change should force ci",
+    "files": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "diff": "+      - name: run lint\n+        run: cargo clippy -- -D warnings\n"
+      }
+    ],
+    "expected": {
+      "type": "ci"
+    }
+  },
+  {
+    "id": "build-cargo",
+    "description": "dependency-only change should force build",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "diff": "+serde = \"1.0\"\n"
+      }
+    ],
+    "expected": {
+      "type": "build"
+    }
+  },
+  {
+    "id": "core-guardrails",
+    "description": "core change with new logic",
+    "files": [
+      {
+        "path": "commit-wizard-core/src/analysis/guardrails.rs",
+        "diff": "+pub fn determine_forced_commit_type(diff_info: &DiffInfo) -> Option<String> {\n+    // new guardrail\n+    None\n+}\n"
+      }
+    ],
+    "expected": {
+      "type": "feat",
+      "scope": "commit-wizard-core"
+    }
+  },
+  {
+    "id": "cli-flag",
+    "description": "cli flag addition",
+    "files": [
+      {
+        "path": "commit-wizard-cli/src/main.rs",
+        "diff": "+    // new flag handling\n+    let use_classifier = cli_args.use_classifier;\n"
+      }
+    ],
+    "expected": {
+      "type": "feat",
+      "scope": "commit-wizard-cli"
+    }
+  }
+]

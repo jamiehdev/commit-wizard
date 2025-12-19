@@ -506,8 +506,13 @@ fn process_diff(
 }
 
 /// classify file type based on path and extension
-fn classify_file_type(path: &str) -> FileType {
+pub fn classify_file_type(path: &str) -> FileType {
     let path_lower = path.to_lowercase();
+
+    // dependency manifests and build files
+    if is_build_manifest(&path_lower) {
+        return FileType::Build;
+    }
 
     // test files (multi-language)
     if path_lower.contains("test")
@@ -605,8 +610,41 @@ fn classify_file_type(path: &str) -> FileType {
     FileType::Other
 }
 
+fn is_build_manifest(path_lower: &str) -> bool {
+    matches!(
+        path_lower,
+        "cargo.toml"
+            | "cargo.lock"
+            | "package.json"
+            | "package-lock.json"
+            | "pnpm-lock.yaml"
+            | "yarn.lock"
+            | "requirements.txt"
+            | "pipfile"
+            | "pom.xml"
+            | "build.gradle"
+            | "build.gradle.kts"
+            | "gemfile"
+            | "gemfile.lock"
+            | "composer.json"
+            | "composer.lock"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_build_manifest_files_as_build() {
+        assert_eq!(classify_file_type("Cargo.toml"), FileType::Build);
+        assert_eq!(classify_file_type("package.json"), FileType::Build);
+        assert_eq!(classify_file_type("pnpm-lock.yaml"), FileType::Build);
+    }
+}
+
 /// analyse change hints from diff content with improved semantic detection
-fn analyse_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint> {
+pub fn analyse_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint> {
     let mut hints = Vec::new();
     let content_lower = content.to_lowercase();
 
@@ -822,7 +860,7 @@ fn decode_line_content(content: &[u8]) -> String {
 }
 
 /// detect if a file is minified based on its name and optionally its content
-fn is_minified_file(path: &str, content: Option<&str>) -> bool {
+pub fn is_minified_file(path: &str, content: Option<&str>) -> bool {
     let path_lower = path.to_lowercase();
 
     // check filename patterns for common minified file patterns

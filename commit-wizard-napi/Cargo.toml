@@ -16,6 +16,7 @@ napi-derive = "2.12.2"
 
 # Core library
 commit-wizard-core = { path = "../commit-wizard-core" }
+console = "0.15"
 
 # Tokio is still needed here if the napi functions are async and use tokio directly
 # (or if commit_wizard_core re-exports what's needed and napi uses that).

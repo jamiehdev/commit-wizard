@@ -36,6 +36,8 @@ jobs:
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: tests
         run: cargo test --workspace --all-features --no-fail-fast
+      - name: eval fixtures (ai-free)
+        run: cargo run --bin eval-tool -- --fixtures fixtures/eval --min-type-accuracy 0.8 --min-scope-accuracy 0.8 --headless-json
 
   napi-build:
     name: napi build (node)
@@ -77,7 +79,7 @@ jobs:
           git -C "$REPO" add hello.txt
       - name: run cli in test mode (no ai required)
         working-directory: commit-wizard-cli
-        run: cargo run -- --test-diff --verbose --path /tmp/cw-e2e
+        run: cargo run -- --test-diff --headless-json --path /tmp/cw-e2e
 
   nightly-ai-smoke:
     if: github.event_name == 'schedule'
@@ -105,4 +107,4 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         working-directory: commit-wizard-cli
-        run: cargo run -- --test-diff --ai-smoke --path /tmp/cw-e2e
+        run: cargo run -- --test-diff --ai-smoke --use-classifier --headless-json --path /tmp/cw-e2e

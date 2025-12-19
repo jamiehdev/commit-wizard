@@ -2,7 +2,8 @@
 
 use super::intelligence::CommitIntelligence;
 use super::patterns::PatternType;
-use crate::git::DiffInfo;
+use crate::git::{ChangeHint, DiffInfo, FileType};
+use std::collections::HashMap;
 
 /// construct intelligent prompt using commit analysis
 pub fn construct_intelligent_prompt(
@@ -244,6 +245,337 @@ pub fn construct_intelligent_prompt(
     prompt.push_str("generate the commit message now.\n");
 
     prompt
+}
+
+/// construct a structured classification prompt
+pub fn construct_classifier_prompt(
+    diff_info: &DiffInfo,
+    intelligence: &CommitIntelligence,
+    scope_candidates: &[String],
+    forced_type: Option<&str>,
+    scope_strategy: crate::analysis::ScopeStrategy,
+    ai_control: crate::analysis::AiControl,
+) -> String {
+    let mut prompt = String::new();
+
+    prompt.push_str("you are an expert software engineer. classify the commit and return json only.\n");
+    prompt.push_str("do not include markdown or extra commentary.\n\n");
+
+    prompt.push_str("json schema (must match exactly):\n");
+    prompt.push_str("{\n");
+    prompt.push_str("  \"type\": \"feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert\",\n");
+    prompt.push_str("  \"scope\": \"string|null\",\n");
+    prompt.push_str("  \"breaking\": true|false,\n");
+    prompt.push_str("  \"subject\": \"string\",\n");
+    prompt.push_str("  \"body_bullets\": [\"string\"],\n");
+    prompt.push_str("  \"confidence\": 0.0,\n");
+    prompt.push_str("  \"scope_reason\": \"string\",\n");
+    prompt.push_str("  \"scope_confidence\": 0.0,\n");
+    prompt.push_str("  \"alternatives\": [{\"type\":\"...\",\"scope\":\"...\",\"why\":\"...\"}]\n");
+    prompt.push_str("}\n\n");
+
+    prompt.push_str("rules:\n");
+    prompt.push_str("- subject must be <= 72 chars, imperative, lowercase first letter, no trailing period\n");
+    match scope_strategy {
+        crate::analysis::ScopeStrategy::Auto => {
+            prompt.push_str("- scope is optional; choose null if no single area dominates or a scope would be overly specific\n");
+        }
+        crate::analysis::ScopeStrategy::Conservative => {
+            prompt.push_str("- scope is optional; only include it when a single area clearly dominates the changes\n");
+        }
+        crate::analysis::ScopeStrategy::Free => {
+            prompt.push_str("- scope is optional; you may choose any valid noun, the suggestions below are optional\n");
+        }
+    }
+    prompt.push_str("- suggested scopes list below is optional, not mandatory\n");
+    prompt.push_str("- prefer concise scopes; avoid repeating a long prefix if a shorter alias exists\n");
+    prompt.push_str("- scope_reason must be a single sentence citing evidence from the diff\n");
+    prompt.push_str("- if cross_cutting is true and no candidate covers >=70% of files, prefer null\n");
+    if ai_control == crate::analysis::AiControl::High {
+        prompt.push_str("- ai_control is high: treat guardrails as hints, not requirements\n");
+    }
+    if let Some(forced_type) = forced_type {
+        prompt.push_str(&format!(
+            "- commit type is forced to '{forced_type}' based on file changes\n"
+        ));
+    }
+    prompt.push_str("- use uk english spelling in subject and bullets\n");
+    prompt.push_str("- body_bullets can be empty if change is simple\n");
+    prompt.push_str("- confidence and scope_confidence are 0.0 to 1.0\n\n");
+
+    prompt.push_str(&format!(
+        "complexity: {:.1}/5.0; requires body: {}\n",
+        intelligence.complexity_score, intelligence.requires_body
+    ));
+
+    let facts = build_fact_summary(diff_info);
+    prompt.push_str("facts:\n");
+    for line in facts {
+        prompt.push_str(&format!("- {line}\n"));
+    }
+    prompt.push('\n');
+
+    let scope_evidence = build_scope_evidence(diff_info, scope_candidates);
+    if !scope_evidence.is_empty() {
+        prompt.push_str("scope evidence:\n");
+        for line in scope_evidence {
+            prompt.push_str(&format!("- {line}\n"));
+        }
+        prompt.push('\n');
+    }
+
+    prompt.push_str("detected patterns:\n");
+    for pattern in &intelligence.detected_patterns {
+        prompt.push_str(&format!(
+            "- {}: {} (impact: {:.1})\n",
+            format_pattern_type(&pattern.pattern_type),
+            pattern.description,
+            pattern.impact
+        ));
+    }
+    prompt.push('\n');
+
+    prompt.push_str("suggested scopes:\n");
+    if scope_candidates.is_empty() {
+        prompt.push_str("[]\n");
+    } else {
+        let joined = scope_candidates
+            .iter()
+            .map(|s| format!("\"{s}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        prompt.push_str(&format!("[{joined}]\n"));
+    }
+    prompt.push('\n');
+
+    prompt.push_str("file summary:\n");
+    prompt.push_str(&diff_info.summary);
+    prompt.push('\n');
+
+    if !diff_info.files.is_empty() {
+        prompt.push_str("\nimportant diff snippets:\n");
+        let important_files = get_important_files_for_diff(&diff_info.files);
+        let mut total_diff_lines = 0;
+        const MAX_TOTAL_DIFF_LINES: usize = 800;
+
+        for (i, file) in important_files.iter().enumerate() {
+            if i >= 8 || total_diff_lines >= MAX_TOTAL_DIFF_LINES {
+                break;
+            }
+
+            if file.is_minified {
+                continue;
+            }
+
+            prompt.push_str(&format!(
+                "\n--- {} (+{} -{}) ---\n",
+                file.path, file.added_lines, file.removed_lines
+            ));
+
+            let lines_to_include =
+                calculate_diff_lines_for_file(file, total_diff_lines, MAX_TOTAL_DIFF_LINES);
+            let meaningful_diff =
+                extract_meaningful_diff_lines(&file.diff_content, lines_to_include);
+
+            if !meaningful_diff.is_empty() {
+                prompt.push_str(&meaningful_diff);
+                prompt.push('\n');
+                total_diff_lines += meaningful_diff.lines().count();
+            }
+        }
+    }
+
+    prompt.push_str("\noutput json now.\n");
+
+    prompt
+}
+
+fn build_fact_summary(diff_info: &DiffInfo) -> Vec<String> {
+    let mut docs = 0usize;
+    let mut tests = 0usize;
+    let mut configs = 0usize;
+    let mut builds = 0usize;
+    let mut sources = 0usize;
+    let mut others = 0usize;
+    let mut hints: std::collections::HashMap<ChangeHint, usize> = std::collections::HashMap::new();
+
+    for file in &diff_info.files {
+        match file.file_type {
+            FileType::Documentation => docs += 1,
+            FileType::Test => tests += 1,
+            FileType::Config => configs += 1,
+            FileType::Build => builds += 1,
+            FileType::SourceCode => sources += 1,
+            FileType::Other => others += 1,
+        }
+
+        for hint in &file.change_hints {
+            *hints.entry(hint.clone()).or_insert(0) += 1;
+        }
+    }
+
+    let mut summary = Vec::new();
+    summary.push(format!("files_total: {}", diff_info.files.len()));
+    summary.push(format!("files_source: {sources}"));
+    summary.push(format!("files_docs: {docs}"));
+    summary.push(format!("files_tests: {tests}"));
+    summary.push(format!("files_config: {configs}"));
+    summary.push(format!("files_build: {builds}"));
+    if others > 0 {
+        summary.push(format!("files_other: {others}"));
+    }
+
+    if !hints.is_empty() {
+        let hint_items = hints
+            .iter()
+            .map(|(hint, count)| format!("{hint:?}={count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        summary.push(format!("change_hints: {hint_items}"));
+    }
+
+    if has_ci_files(diff_info) {
+        summary.push("has_ci_files: true".to_string());
+    }
+
+    summary
+}
+
+fn build_scope_evidence(diff_info: &DiffInfo, scope_candidates: &[String]) -> Vec<String> {
+    if diff_info.files.is_empty() {
+        return Vec::new();
+    }
+
+    let total_files = diff_info.files.len().max(1);
+    let mut top_levels: HashMap<String, usize> = HashMap::new();
+
+    for file in &diff_info.files {
+        if let Some(first) = file.path.split('/').next() {
+            if !first.is_empty() {
+                *top_levels.entry(first.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    if top_levels.is_empty() {
+        return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+
+    let mut sorted_top: Vec<(String, usize)> = top_levels.into_iter().collect();
+    sorted_top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    let distinct = sorted_top.len();
+    let cross_cutting = distinct > 1;
+
+    let top_line = sorted_top
+        .iter()
+        .take(5)
+        .map(|(name, count)| format!("{name}={count}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    lines.push(format!("top_level_segments: {top_line}"));
+    lines.push(format!("distinct_top_levels: {distinct}"));
+    lines.push(format!("cross_cutting: {cross_cutting}"));
+
+    if !scope_candidates.is_empty() {
+        let mut candidate_counts = Vec::new();
+        let aliases = derive_short_aliases(scope_candidates);
+
+        for candidate in scope_candidates {
+            let cand_lower = candidate.to_lowercase();
+            let mut count = 0;
+
+            for file in &diff_info.files {
+                if file
+                    .path
+                    .split('/')
+                    .any(|seg| seg.to_lowercase() == cand_lower)
+                {
+                    count += 1;
+                }
+            }
+
+            if count > 0 {
+                let pct = (count as f32 / total_files as f32) * 100.0;
+                candidate_counts.push((candidate.clone(), count, pct));
+            }
+
+        }
+
+        candidate_counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+        if let Some((name, count, pct)) = candidate_counts.first() {
+            lines.push(format!(
+                "dominant_candidate: {name} ({count}/{total_files} files, {pct:.0}%)"
+            ));
+        }
+
+        if !candidate_counts.is_empty() {
+            let coverage_line = candidate_counts
+                .iter()
+                .take(5)
+                .map(|(name, count, pct)| format!("{name}={count} ({pct:.0}%)"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            lines.push(format!("candidate_coverage: {coverage_line}"));
+        }
+
+        if !aliases.is_empty() {
+            lines.push(format!(
+                "short_scope_aliases: {}",
+                aliases.join(", ")
+            ));
+        }
+    }
+
+    lines
+}
+
+fn derive_short_aliases(scope_candidates: &[String]) -> Vec<String> {
+    let mut prefix_counts: HashMap<String, usize> = HashMap::new();
+    for candidate in scope_candidates {
+        if let Some((prefix, _suffix)) = split_prefix_suffix(candidate) {
+            *prefix_counts.entry(prefix).or_insert(0) += 1;
+        }
+    }
+
+    let mut aliases = Vec::new();
+    for candidate in scope_candidates {
+        if let Some((prefix, suffix)) = split_prefix_suffix(candidate) {
+            if prefix_counts.get(&prefix).copied().unwrap_or(0) >= 2
+                && !aliases.contains(&suffix)
+            {
+                aliases.push(suffix);
+            }
+        }
+    }
+
+    aliases
+}
+
+fn split_prefix_suffix(name: &str) -> Option<(String, String)> {
+    let idx = name.rfind('-')?;
+    let prefix = name[..idx].to_string();
+    let suffix = name[idx + 1..].to_string();
+    if prefix.is_empty() || suffix.is_empty() {
+        None
+    } else {
+        Some((prefix, suffix))
+    }
+}
+
+fn has_ci_files(diff_info: &DiffInfo) -> bool {
+    diff_info.files.iter().any(|file| {
+        let path_lower = file.path.to_lowercase();
+        path_lower.contains(".github/workflows")
+            || path_lower.contains(".gitlab-ci")
+            || path_lower.contains("jenkinsfile")
+            || path_lower.contains(".circleci")
+            || path_lower.contains("azure-pipelines")
+            || path_lower.contains(".travis")
+    })
 }
 
 /// get system prompt based on intelligence

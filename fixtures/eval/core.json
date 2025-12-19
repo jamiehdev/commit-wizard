@@ -1,0 +1,71 @@
+[
+  {
+    "id": "core-classifier",
+    "description": "new classifier module in core",
+    "files": [
+      {
+        "path": "commit-wizard-core/src/ai/classifier.rs",
+        "diff": "+pub fn parse_commit_classification(response: &str) -> Result<CommitClassification> {\n+    // parse json classifier response\n+    todo!()\n+}\n"
+      }
+    ],
+    "expected": {
+      "type": "feat",
+      "scope": "commit-wizard-core"
+    }
+  },
+  {
+    "id": "core-scope-candidates",
+    "description": "scope candidate improvements",
+    "files": [
+      {
+        "path": "commit-wizard-core/src/analysis/scope_candidates.rs",
+        "diff": "+fn is_generic_segment(segment: &str) -> bool {\n+    segment == \"docs\"\n+}\n"
+      }
+    ],
+    "expected": {
+      "type": "feat",
+      "scope": "commit-wizard-core"
+    }
+  },
+  {
+    "id": "cli-headless-output",
+    "description": "headless mode change in cli",
+    "files": [
+      {
+        "path": "commit-wizard-cli/src/main.rs",
+        "diff": "+    let is_headless = cli_args.headless || cli_args.headless_json;\n"
+      }
+    ],
+    "expected": {
+      "type": "feat",
+      "scope": "commit-wizard-cli"
+    }
+  },
+  {
+    "id": "eval-tool-bin",
+    "description": "add eval tool binary",
+    "files": [
+      {
+        "path": "commit-wizard-core/src/bin/eval_tool.rs",
+        "diff": "+fn run_case() -> Result<()> {\n+    Ok(())\n+}\n"
+      }
+    ],
+    "expected": {
+      "type": "feat",
+      "scope": "commit-wizard-core"
+    }
+  },
+  {
+    "id": "docs-changelog",
+    "description": "doc change in changelog",
+    "files": [
+      {
+        "path": "CHANGELOG.md",
+        "diff": "+- feat: add classifier pipeline\n"
+      }
+    ],
+    "expected": {
+      "type": "docs"
+    }
+  }
+]

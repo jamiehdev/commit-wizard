@@ -7,12 +7,8 @@ use napi::Result as NapiResult;
 use napi::Status;
 
 // import from the core library
-use commit_wizard_core::{
-  execute_commit_wizard_flow,
-  style, // for potential direct use of style in NAPI error messages
-  CoreCliArgs,
-  Parser, // <<< import the Parser trait
-};
+use commit_wizard_core::{execute_commit_wizard_flow, CoreCliArgs, Parser};
+use console::style;
 
 // removed mod ai, git, utils - they are in commit_wizard_core
 // removed direct use of clap::Parser, console::style (except above), dialoguer, indicatif, etc.
@@ -26,6 +22,9 @@ pub async fn run_commit_wizard_cli(argv: Vec<String>) -> NapiResult<String> {
   // clap expects the first arg to be the program name.
   let mut full_argv = vec!["commit-wizard-napi".to_string()]; // dummy program name
   full_argv.extend(argv);
+  if !full_argv.iter().any(|arg| arg == "--headless" || arg == "--headless-json") {
+    full_argv.push("--headless".to_string());
+  }
 
   let core_args = match CoreCliArgs::try_parse_from(&full_argv) {
     Ok(args) => args,

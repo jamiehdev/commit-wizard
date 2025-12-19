@@ -98,7 +98,7 @@ fn classify_commits(commits: &[Commit]) -> CommitAnalysis {
 }
 
 /// get commits since last semver tag (vX.Y.Z)
-fn commits_since_last_tag(repo: &Repository) -> Result<Vec<Commit>> {
+fn commits_since_last_tag(repo: &Repository) -> Result<Vec<Commit<'_>>> {
     // pre-compute the set of commit ids that are the target of semver tags
     let semver = Regex::new(r"^v\d+\.\d+\.\d+$").unwrap();
     let mut tagged_commit_ids: HashSet<git2::Oid> = HashSet::new();
