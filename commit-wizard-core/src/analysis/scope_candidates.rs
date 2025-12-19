@@ -88,6 +88,7 @@ pub fn derive_scope_candidates_with_options(
     } else {
         HashMap::new()
     };
+    let allow_single_alias = options.allow_aliases && ranked.len() == 1;
 
     let mut candidates: Vec<String> = Vec::new();
     for (name, _) in ranked {
@@ -101,7 +102,7 @@ pub fn derive_scope_candidates_with_options(
         if candidates.len() >= 8 || !options.allow_aliases {
             break;
         }
-        if let Some(alias) = scope_alias(&name, &prefix_counts) {
+        if let Some(alias) = scope_alias(&name, &prefix_counts, allow_single_alias) {
             if !candidates.contains(&alias) && !is_generic_segment(&alias) {
                 candidates.push(alias);
             }
@@ -144,9 +145,16 @@ fn is_generic_segment(segment: &str) -> bool {
     )
 }
 
-fn scope_alias(candidate: &str, prefix_counts: &HashMap<String, usize>) -> Option<String> {
+fn scope_alias(
+    candidate: &str,
+    prefix_counts: &HashMap<String, usize>,
+    allow_single_alias: bool,
+) -> Option<String> {
     if let Some((prefix, suffix)) = split_prefix_suffix(candidate) {
         if prefix_counts.get(&prefix).copied().unwrap_or(0) >= 2 {
+            return Some(suffix);
+        }
+        if allow_single_alias && suffix.len() <= 12 {
             return Some(suffix);
         }
     }

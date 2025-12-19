@@ -277,6 +277,7 @@ pub fn construct_classifier_prompt(
 
     prompt.push_str("rules:\n");
     prompt.push_str("- subject must be <= 72 chars, imperative, lowercase first letter, no trailing period\n");
+    prompt.push_str("- use feat only for new user-facing behaviour; avoid feat for text/validation wording changes\n");
     match scope_strategy {
         crate::analysis::ScopeStrategy::Auto => {
             prompt.push_str("- scope is optional; choose null if no single area dominates or a scope would be overly specific\n");

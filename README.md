@@ -235,7 +235,7 @@ commit wizard stores settings in `~/.config/commit-wizard/config.toml`. this fil
 auto_select = false
 ai_control = "high"           # high | balanced | strict
 scope_strategy = "free"       # auto | conservative | free
-scope_aliases = false
+scope_aliases = true
 # min_scope_confidence = 0.5  # optional: 0.0-1.0
 # min_confidence = 0.7        # optional: 0.0-1.0
 

@@ -32,7 +32,7 @@ pub struct Config {
     pub ai_control: AiControl,
     #[serde(default = "default_scope_strategy")]
     pub scope_strategy: ScopeStrategy,
-    #[serde(default)]
+    #[serde(default = "default_scope_aliases")]
     pub scope_aliases: bool,
     #[serde(default)]
     pub min_scope_confidence: Option<f32>,
@@ -46,6 +46,10 @@ fn default_ai_control() -> AiControl {
 
 fn default_scope_strategy() -> ScopeStrategy {
     ScopeStrategy::Free
+}
+
+fn default_scope_aliases() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -119,7 +123,7 @@ impl Default for Config {
             auto_select: false,  // default to not auto-selecting
             ai_control: AiControl::High,
             scope_strategy: ScopeStrategy::Free,
-            scope_aliases: false,
+            scope_aliases: true,
             min_scope_confidence: None,
             min_confidence: None,
         }
@@ -283,8 +287,8 @@ pub fn get_current_model(
         }
     }
 
-    // fallback to environment variable or default thinking model
-    env::var("OPENROUTER_MODEL").unwrap_or_else(|_| config.models.thinking.clone())
+    // fallback to environment variable or configured default model
+    env::var("OPENROUTER_MODEL").unwrap_or_else(|_| config.models.default.clone())
 }
 
 /// get a human-readable description for a model name
@@ -1182,7 +1186,7 @@ mod tests {
         // verify serde defaults are applied
         assert_eq!(config.ai_control, AiControl::High);
         assert_eq!(config.scope_strategy, ScopeStrategy::Free);
-        assert!(!config.scope_aliases);
+        assert!(config.scope_aliases);
         assert!(config.min_scope_confidence.is_none());
         assert!(config.min_confidence.is_none());
     }

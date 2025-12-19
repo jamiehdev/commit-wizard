@@ -838,9 +838,9 @@ pub fn analyse_change_hints(content: &str, is_new_file: bool) -> Vec<ChangeHint>
         hints.push(ChangeHint::Documentation);
     }
 
-    // if no specific hints found and it's not a minor tweak, assume it's a new feature
+    // if no specific hints found and it's not a minor tweak, assume it's a small tweak
     if hints.is_empty() {
-        hints.push(ChangeHint::NewFeature);
+        hints.push(ChangeHint::MinorTweak);
     }
 
     hints
