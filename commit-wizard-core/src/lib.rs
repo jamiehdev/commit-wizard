@@ -174,22 +174,23 @@ pub struct CoreCliArgs {
     #[arg(long)]
     pub min_scope_confidence: Option<f32>,
 
-    /// AI control preset (high, balanced, strict).
-    #[arg(long, value_enum, default_value_t = AiControl::High)]
-    pub ai_control: AiControl,
+    /// AI control preset (high, balanced, strict). Overrides config default when set.
+    #[arg(long, value_enum)]
+    pub ai_control: Option<AiControl>,
 
-    /// Strategy for scope selection (auto, conservative, free).
-    #[arg(long, value_enum, default_value_t = ScopeStrategy::Free)]
-    pub scope_strategy: ScopeStrategy,
+    /// Strategy for scope selection (auto, conservative, free). Overrides config default when set.
+    #[arg(long, value_enum)]
+    pub scope_strategy: Option<ScopeStrategy>,
 
-    /// Allow alias scopes derived from common prefixes (e.g., core/cli).
+    /// Allow alias scopes derived from common prefixes (e.g., core/cli). Overrides config default when set.
     #[arg(
         long,
-        default_value_t = false,
+        num_args = 0..=1,
+        default_missing_value = "true",
         action = clap::ArgAction::Set,
         value_parser = clap::builder::BoolishValueParser::new()
     )]
-    pub scope_aliases: bool,
+    pub scope_aliases: Option<bool>,
 
     /// use smart model selection: fast model for simple commits, thinking model for complex ones
     #[arg(long)]
@@ -206,6 +207,28 @@ pub struct CoreCliArgs {
     /// require AI generation to succeed in --test-diff mode (for CI smoke tests)
     #[arg(long)]
     pub ai_smoke: bool,
+}
+
+impl CoreCliArgs {
+    pub fn effective_ai_control(&self, config: &Config) -> AiControl {
+        self.ai_control.unwrap_or(config.ai_control)
+    }
+
+    pub fn effective_scope_strategy(&self, config: &Config) -> ScopeStrategy {
+        self.scope_strategy.unwrap_or(config.scope_strategy)
+    }
+
+    pub fn effective_scope_aliases(&self, config: &Config) -> bool {
+        self.scope_aliases.unwrap_or(config.scope_aliases)
+    }
+
+    pub fn effective_min_confidence(&self, config: &Config) -> Option<f32> {
+        self.min_confidence.or(config.min_confidence)
+    }
+
+    pub fn effective_min_scope_confidence(&self, config: &Config) -> Option<f32> {
+        self.min_scope_confidence.or(config.min_scope_confidence)
+    }
 }
 
 /// get a safe fallback model that should always work
@@ -315,7 +338,10 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
             "--debug is not supported with --headless-json (use --headless instead)"
         ));
     }
-    if let Some(min_confidence) = args.min_confidence {
+    let min_confidence = args.effective_min_confidence(&config);
+    let min_scope_confidence = args.effective_min_scope_confidence(&config);
+
+    if let Some(min_confidence) = min_confidence {
         if !(0.0..=1.0).contains(&min_confidence) {
             return Err(anyhow::anyhow!(
                 "--min-confidence must be between 0.0 and 1.0"
@@ -327,7 +353,7 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
             ));
         }
     }
-    if let Some(min_scope_confidence) = args.min_scope_confidence {
+    if let Some(min_scope_confidence) = min_scope_confidence {
         if !(0.0..=1.0).contains(&min_scope_confidence) {
             return Err(anyhow::anyhow!(
                 "--min-scope-confidence must be between 0.0 and 1.0"
@@ -799,13 +825,6 @@ pub async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, boo
     }
 
     let intelligence = crate::ai::analyse_commit_intelligence(&diff_info);
-    let scope_candidates = crate::analysis::derive_scope_candidates_with_options(
-        &diff_info,
-        crate::analysis::ScopeCandidateOptions {
-            allow_aliases: args.scope_aliases,
-        },
-    );
-    let forced_type = crate::analysis::determine_forced_commit_type(&diff_info);
 
     if !is_headless {
         println!(
@@ -852,6 +871,15 @@ pub async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, boo
         }
     };
 
+    let scope_aliases = args.effective_scope_aliases(&config);
+    let scope_candidates = crate::analysis::derive_scope_candidates_with_options(
+        &diff_info,
+        crate::analysis::ScopeCandidateOptions {
+            allow_aliases: scope_aliases,
+        },
+    );
+    let forced_type = crate::analysis::determine_forced_commit_type(&diff_info);
+
     dotenv().ok();
     let api_key = std::env::var("OPENROUTER_API_KEY").ok();
     let has_api_key = api_key
@@ -878,6 +906,12 @@ pub async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, boo
                 style("🤖 testing ai commit message generation...").cyan()
             );
         }
+        let min_confidence = args.effective_min_confidence(&config);
+        let min_scope_confidence = args.effective_min_scope_confidence(&config);
+        let scope_strategy = args.effective_scope_strategy(&config);
+        let scope_aliases = args.effective_scope_aliases(&config);
+        let ai_control = args.effective_ai_control(&config);
+
         let generated = match crate::ai::generate_conventional_commit_with_model(
             &diff_info,
             args.debug,
@@ -886,11 +920,11 @@ pub async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, boo
             &config,
             is_headless,
             args.use_classifier,
-            args.min_confidence,
-            args.min_scope_confidence,
-            args.scope_strategy,
-            args.scope_aliases,
-            args.ai_control,
+            min_confidence,
+            min_scope_confidence,
+            scope_strategy,
+            scope_aliases,
+            ai_control,
         )
         .await
         {
@@ -1060,6 +1094,75 @@ pub async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::ffi::OsString;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &PathBuf) -> Self {
+            let previous = env::var_os(key);
+            env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.take() {
+                env::set_var(self.key, value);
+            } else {
+                env::remove_var(self.key);
+            }
+        }
+    }
+
+    struct TempConfigDir {
+        path: PathBuf,
+        _env_guard: EnvVarGuard,
+        _lock_guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl TempConfigDir {
+        fn initialise() -> Self {
+            let lock = ENV_MUTEX
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .expect("env mutex poisoned");
+            let unique = format!(
+                "commit-wizard-test-{}-{}",
+                process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time drift")
+                    .as_nanos()
+            );
+            let path = env::temp_dir().join(unique);
+            fs::create_dir_all(&path).expect("failed to create temp dir");
+            let env_guard = EnvVarGuard::set("XDG_CONFIG_HOME", &path);
+            Self {
+                path,
+                _env_guard: env_guard,
+                _lock_guard: lock,
+            }
+        }
+    }
+
+    impl Drop for TempConfigDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 
     #[test]
     fn config_loads_with_missing_ai_knobs() {
@@ -1172,5 +1275,71 @@ mod tests {
         assert!(!json.contains("scope_reason"));
         assert!(!json.contains("scope_confidence"));
         assert!(!json.contains("overall_confidence"));
+    }
+
+    #[test]
+    fn cli_effective_defaults_respect_config() {
+        let temp_dir = TempConfigDir::initialise();
+        let config_dir = temp_dir.path.join("commit-wizard");
+        fs::create_dir_all(&config_dir).expect("failed to create config dir");
+        let config_path = config_dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+auto_select = true
+ai_control = "balanced"
+scope_strategy = "conservative"
+scope_aliases = true
+min_scope_confidence = 0.5
+min_confidence = 0.7
+
+[models]
+fast = "model-a"
+thinking = "model-b"
+default = "model-c"
+available = []
+"#,
+        )
+        .expect("failed to write config");
+
+        let config = load_config().expect("should load config");
+        let args = CoreCliArgs::try_parse_from(["commit-wizard", "--use-classifier"])
+            .expect("should parse args");
+
+        assert_eq!(args.effective_ai_control(&config), AiControl::Balanced);
+        assert_eq!(
+            args.effective_scope_strategy(&config),
+            ScopeStrategy::Conservative
+        );
+        assert!(args.effective_scope_aliases(&config));
+        assert_eq!(args.effective_min_confidence(&config), Some(0.7));
+        assert_eq!(args.effective_min_scope_confidence(&config), Some(0.5));
+
+        let args_override = CoreCliArgs::try_parse_from([
+            "commit-wizard",
+            "--use-classifier",
+            "--ai-control",
+            "strict",
+            "--scope-strategy",
+            "free",
+            "--scope-aliases=false",
+            "--min-confidence",
+            "0.9",
+            "--min-scope-confidence",
+            "0.2",
+        ])
+        .expect("should parse override args");
+
+        assert_eq!(args_override.effective_ai_control(&config), AiControl::Strict);
+        assert_eq!(
+            args_override.effective_scope_strategy(&config),
+            ScopeStrategy::Free
+        );
+        assert!(!args_override.effective_scope_aliases(&config));
+        assert_eq!(args_override.effective_min_confidence(&config), Some(0.9));
+        assert_eq!(
+            args_override.effective_min_scope_confidence(&config),
+            Some(0.2)
+        );
     }
 }

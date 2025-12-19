@@ -190,6 +190,7 @@ pub async fn generate_conventional_commit_with_model(
             forced_type.as_deref(),
             effective_scope_strategy,
             ai_control,
+            scope_aliases,
         )
     } else {
         construct_intelligent_prompt(diff_info, &intelligence)
@@ -323,7 +324,11 @@ pub async fn generate_conventional_commit_with_model(
                         }
                     }
                     // capture audit fields before rendering
-                    captured_scope_reason = classification.scope_reason.clone();
+                    captured_scope_reason = if classification.scope.is_some() {
+                        classification.scope_reason.clone()
+                    } else {
+                        None
+                    };
                     captured_scope_confidence = if classification.scope.is_some() {
                         Some(classification.scope_confidence)
                     } else {

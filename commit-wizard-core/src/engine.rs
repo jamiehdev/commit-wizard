@@ -47,6 +47,12 @@ pub async fn generate_commit_message(
     let mut selected_model = crate::get_current_model(config, args, Some(&diff_info));
     let mut used_fallback = false;
 
+    let min_confidence = args.effective_min_confidence(config);
+    let min_scope_confidence = args.effective_min_scope_confidence(config);
+    let scope_strategy = args.effective_scope_strategy(config);
+    let scope_aliases = args.effective_scope_aliases(config);
+    let ai_control = args.effective_ai_control(config);
+
     let gen_result = match ai::generate_conventional_commit_with_model(
         &diff_info,
         args.debug,
@@ -55,11 +61,11 @@ pub async fn generate_commit_message(
         config,
         quiet,
         use_classifier,
-        args.min_confidence,
-        args.min_scope_confidence,
-        args.scope_strategy,
-        args.scope_aliases,
-        args.ai_control,
+        min_confidence,
+        min_scope_confidence,
+        scope_strategy,
+        scope_aliases,
+        ai_control,
     )
     .await
     {
@@ -85,11 +91,11 @@ pub async fn generate_commit_message(
                     config,
                     quiet,
                     use_classifier,
-                    args.min_confidence,
-                    args.min_scope_confidence,
-                    args.scope_strategy,
-                    args.scope_aliases,
-                    args.ai_control,
+                    min_confidence,
+                    min_scope_confidence,
+                    scope_strategy,
+                    scope_aliases,
+                    ai_control,
                 )
                 .await
                 .context("failed to generate commit message even with fallback model")?

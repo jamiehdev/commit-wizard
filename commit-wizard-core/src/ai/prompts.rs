@@ -255,6 +255,7 @@ pub fn construct_classifier_prompt(
     forced_type: Option<&str>,
     scope_strategy: crate::analysis::ScopeStrategy,
     ai_control: crate::analysis::AiControl,
+    scope_aliases: bool,
 ) -> String {
     let mut prompt = String::new();
 
@@ -315,7 +316,7 @@ pub fn construct_classifier_prompt(
     }
     prompt.push('\n');
 
-    let scope_evidence = build_scope_evidence(diff_info, scope_candidates);
+    let scope_evidence = build_scope_evidence(diff_info, scope_candidates, scope_aliases);
     if !scope_evidence.is_empty() {
         prompt.push_str("scope evidence:\n");
         for line in scope_evidence {
@@ -441,7 +442,11 @@ fn build_fact_summary(diff_info: &DiffInfo) -> Vec<String> {
     summary
 }
 
-fn build_scope_evidence(diff_info: &DiffInfo, scope_candidates: &[String]) -> Vec<String> {
+fn build_scope_evidence(
+    diff_info: &DiffInfo,
+    scope_candidates: &[String],
+    scope_aliases: bool,
+) -> Vec<String> {
     if diff_info.files.is_empty() {
         return Vec::new();
     }
@@ -481,7 +486,11 @@ fn build_scope_evidence(diff_info: &DiffInfo, scope_candidates: &[String]) -> Ve
 
     if !scope_candidates.is_empty() {
         let mut candidate_counts = Vec::new();
-        let aliases = derive_short_aliases(scope_candidates);
+        let aliases = if scope_aliases {
+            derive_short_aliases(scope_candidates)
+        } else {
+            Vec::new()
+        };
 
         for candidate in scope_candidates {
             let cand_lower = candidate.to_lowercase();

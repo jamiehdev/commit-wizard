@@ -16,9 +16,8 @@ use commit_wizard_core::{
 };
 
 pub async fn run_cli(args: CoreCliArgs) -> Result<(String, bool)> {
-    validate_args(&args)?;
-
     let mut config = load_config()?;
+    validate_args(&args, &config)?;
 
     if args.test_diff {
         return test_git_diff_processing(&args).await;
@@ -140,13 +139,13 @@ pub async fn run_cli(args: CoreCliArgs) -> Result<(String, bool)> {
     }
 }
 
-fn validate_args(args: &CoreCliArgs) -> Result<()> {
+fn validate_args(args: &CoreCliArgs, config: &Config) -> Result<()> {
     if args.headless_json && args.debug {
         return Err(anyhow::anyhow!(
             "--debug is not supported with --headless-json (use --headless instead)"
         ));
     }
-    if let Some(min_confidence) = args.min_confidence {
+    if let Some(min_confidence) = args.effective_min_confidence(config) {
         if !(0.0..=1.0).contains(&min_confidence) {
             return Err(anyhow::anyhow!(
                 "--min-confidence must be between 0.0 and 1.0"
@@ -158,7 +157,7 @@ fn validate_args(args: &CoreCliArgs) -> Result<()> {
             ));
         }
     }
-    if let Some(min_scope_confidence) = args.min_scope_confidence {
+    if let Some(min_scope_confidence) = args.effective_min_scope_confidence(config) {
         if !(0.0..=1.0).contains(&min_scope_confidence) {
             return Err(anyhow::anyhow!(
                 "--min-scope-confidence must be between 0.0 and 1.0"
@@ -179,6 +178,11 @@ async fn run_generate_and_commit_flow(
 ) -> Result<(String, bool)> {
     let is_headless = args.headless || args.headless_json;
     let repo_path = args.path.clone().unwrap_or_else(|| ".".to_string());
+    let min_confidence = args.effective_min_confidence(config);
+    let min_scope_confidence = args.effective_min_scope_confidence(config);
+    let scope_strategy = args.effective_scope_strategy(config);
+    let scope_aliases = args.effective_scope_aliases(config);
+    let ai_control = args.effective_ai_control(config);
 
     if args.smart_model {
         println!("{}", style("🤖 smart model selection enabled").green());
@@ -315,11 +319,11 @@ async fn run_generate_and_commit_flow(
                         config,
                         is_headless,
                         args.use_classifier,
-                        args.min_confidence,
-                        args.min_scope_confidence,
-                        args.scope_strategy,
-                        args.scope_aliases,
-                        args.ai_control,
+                        min_confidence,
+                        min_scope_confidence,
+                        scope_strategy,
+                        scope_aliases,
+                        ai_control,
                     )
                     .await
                     .context("failed to regenerate commit message")?
@@ -397,11 +401,11 @@ async fn run_generate_and_commit_flow(
                                 config,
                                 is_headless,
                                 args.use_classifier,
-                                args.min_confidence,
-                                args.min_scope_confidence,
-                                args.scope_strategy,
-                                args.scope_aliases,
-                                args.ai_control,
+                                min_confidence,
+                                min_scope_confidence,
+                                scope_strategy,
+                                scope_aliases,
+                                ai_control,
                             )
                             .await
                             .context("failed to regenerate commit message with new model")?
