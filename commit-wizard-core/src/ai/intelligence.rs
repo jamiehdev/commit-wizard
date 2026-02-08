@@ -1,6 +1,10 @@
 // commit intelligence analysis module
 
 use super::patterns::{Pattern, PatternType};
+use crate::analysis::{
+    analyse_guardrails, calculate_scope_coverage_with_rules, derive_scope_candidates_with_rules,
+    load_scope_rules, ScopeCandidateOptions,
+};
 use crate::git::{DiffInfo, ModifiedFile};
 use std::collections::{HashMap, HashSet};
 
@@ -71,6 +75,11 @@ pub fn analyse_commit_intelligence(diff_info: &DiffInfo) -> CommitIntelligence {
     let (commit_type, scope) = suggest_commit_metadata(&intelligence.detected_patterns, diff_info);
     intelligence.commit_type_hint = commit_type;
     intelligence.scope_hint = scope;
+
+    let guardrails = analyse_guardrails(diff_info);
+    if let Some(forced_type) = guardrails.forced_type {
+        intelligence.commit_type_hint = forced_type;
+    }
 
     intelligence
 }
@@ -775,6 +784,27 @@ pub fn suggest_commit_metadata(
 
 /// determine intelligent scope
 fn determine_intelligent_scope(diff_info: &DiffInfo) -> Option<String> {
+    if let Some(scope_rules) = load_scope_rules(&diff_info.repo_root) {
+        let candidates = derive_scope_candidates_with_rules(
+            diff_info,
+            ScopeCandidateOptions { allow_aliases: true },
+            Some(&scope_rules),
+        );
+        if scope_rules.omit_scope_if_single() && candidates.len() <= 1 {
+            return None;
+        }
+        if let Some(candidate) = candidates.first() {
+            if scope_rules.omit_scope_if_ambiguous() {
+                let coverage =
+                    calculate_scope_coverage_with_rules(diff_info, candidate, Some(&scope_rules));
+                if coverage < 0.7 {
+                    return None;
+                }
+            }
+            return Some(candidate.clone());
+        }
+    }
+
     // detect subsystem from file paths
     let subsystem = detect_subsystem(diff_info);
     if subsystem != "general" {
@@ -785,14 +815,18 @@ fn determine_intelligent_scope(diff_info: &DiffInfo) -> Option<String> {
     let mut dir_counts: HashMap<String, usize> = HashMap::new();
     for file in &diff_info.files {
         if let Some(dir) = file.path.split('/').next() {
-            *dir_counts.entry(dir.to_string()).or_insert(0) += 1;
+            let normalized = normalize_scope(dir);
+            if normalized.is_empty() {
+                continue;
+            }
+            *dir_counts.entry(normalized).or_insert(0) += 1;
         }
     }
 
     dir_counts
         .iter()
         .max_by_key(|(_, count)| *count)
-        .map(|(dir, _)| normalize_scope(dir))
+        .map(|(dir, _)| dir.clone())
 }
 
 /// detect subsystem from paths
@@ -836,10 +870,17 @@ fn detect_subsystem(diff_info: &DiffInfo) -> String {
 
 /// normalise scope string
 fn normalize_scope(scope: &str) -> String {
-    scope
+    let cleaned = scope
         .to_lowercase()
         .replace(['_', ' '], "-")
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-')
-        .collect()
+        .collect::<String>();
+
+    let without_prefix = cleaned.strip_prefix("commit-wizard-").unwrap_or(&cleaned);
+    if without_prefix == "core" {
+        String::new()
+    } else {
+        without_prefix.to_string()
+    }
 }

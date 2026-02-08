@@ -46,6 +46,8 @@ install via npm:
 npm i -g @jamiehdev/commit-wizard
 ```
 
+> **note:** the npm package ships prebuilt rust binaries and uses a thin node launcher (no native addons).
+
 set your OpenRouter API key:
 
 ```shell
@@ -56,7 +58,7 @@ export OPENROUTER_API_KEY="your-api-key-here"
 >
 > ```env
 > OPENROUTER_API_KEY=your-api-key-here
-> OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
+> OPENROUTER_MODEL=mistralai/devstral-2512:free
 > ```
 
 make some changes in your git repository, stage them, and run:
@@ -130,6 +132,34 @@ commit wizard is built for developers who want **consistent, meaningful commit m
 | `--yes` | `-y` | automatically commit when confirmed |
 | `--debug` | | show debug information including raw ai responses and model selection reasoning |
 | `--smart-model` | | enable intelligent model selection based on commit complexity |
+| `--headless` | | run without interactive prompts and print the commit message only |
+| `--headless-json` | | output machine-readable json (implies --headless) |
+| `--use-classifier` | | use the structured classifier pipeline (experimental) |
+| `--min-confidence <0.0-1.0>` | | minimum acceptable classifier confidence (requires --use-classifier) |
+| `--min-scope-confidence <0.0-1.0>` | | minimum acceptable scope confidence (requires --use-classifier) |
+| `--scope-strategy <auto|conservative|free>` | | scope selection strategy (default: free) |
+| `--scope-aliases <true|false>` | | allow short scope aliases derived from shared prefixes (default: false) |
+| `--ai-control <high|balanced|strict>` | | ai control preset (default: high) |
+
+### ai control presets
+
+- `high` — ai has maximum control: guardrails are hints, scopes are optional, and suggestions are non-binding.
+- `balanced` — ai decides, but guardrails and suggested scopes carry more weight.
+- `strict` — ai follows conservative scope guidance and stronger guardrails for safer output.
+
+ai control presets may override scope strategy and guardrail behaviour to match the chosen mode.
+
+### headless json output
+
+when using `--headless-json`, the output includes classifier audit fields (when `--use-classifier` is enabled):
+
+| field | type | description |
+|-------|------|-------------|
+| `scope_reason` | string? | ai's explanation for scope choice |
+| `scope_confidence` | float? | confidence in scope selection (0.0-1.0) |
+| `overall_confidence` | float? | overall message confidence (0.0-1.0) |
+
+these fields are omitted when null (backward compatible).
 
 ### model settings
 
@@ -153,11 +183,11 @@ commit wizard uses environment variables for configuration. you can set these in
 | variable | required | description | example |
 |----------|----------|-------------|---------|
 | `OPENROUTER_API_KEY` | yes | your openrouter api key | `sk-or-v1-...` |
-| `OPENROUTER_MODEL` | no | ai model to use | `deepseek/deepseek-r1-0528:free` |
+| `OPENROUTER_MODEL` | no | ai model to use | `mistralai/devstral-2512:free` |
 
 ### model configuration
 
-commit wizard uses `deepseek/deepseek-r1-0528:free` as the default model, providing excellent code analysis at no cost. you can customise model selection through:
+commit wizard uses `mistralai/devstral-2512:free` as the default model, providing excellent code analysis at no cost. you can customise model selection through:
 
 1. **environment variable:** `OPENROUTER_MODEL=your-preferred-model`
 2. **interactive menu:** accessible during the commit workflow
@@ -168,7 +198,8 @@ commit wizard uses `deepseek/deepseek-r1-0528:free` as the default model, provid
 
 | tier | model | description | use case |
 |------|-------|-------------|----------|
-| **free** | `deepseek/deepseek-r1-0528:free` | thinking model with excellent code understanding | complex commits, default choice |
+| **free** | `mistralai/devstral-2512:free` | strong code model | default choice |
+| **free** | `deepseek/deepseek-r1-0528:free` | thinking model with excellent code understanding | complex commits |
 | **free** | `deepseek/deepseek-chat-v3-0324:free` | fast model for quick analysis | simple commits, speed priority |
 | **free** | `meta-llama/llama-3.1-8b-instruct:free` | solid general performance | balanced free option |
 | **premium** | `anthropic/claude-3.5-sonnet` | superior reasoning and context | complex codebases, best quality |
@@ -186,14 +217,56 @@ when enabled with `--smart-model`, commit wizard automatically chooses:
 **.env file (recommended):**
 ```env
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
-OPENROUTER_MODEL=deepseek/deepseek-r1-0528:free
+OPENROUTER_MODEL=mistralai/devstral-2512:free
 ```
 
 **shell configuration:**
 ```bash
 # Add to your ~/.bashrc, ~/.zshrc, etc.
 export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
-export OPENROUTER_MODEL="deepseek/deepseek-r1-0528:free"
+export OPENROUTER_MODEL="mistralai/devstral-2512:free"
+```
+
+### config file
+
+commit wizard stores settings in `~/.config/commit-wizard/config.toml`. this file includes ai control defaults:
+
+```toml
+auto_select = false
+ai_control = "high"           # high | balanced | strict
+scope_strategy = "free"       # auto | conservative | free
+scope_aliases = true
+# min_scope_confidence = 0.5  # optional: 0.0-1.0
+# min_confidence = 0.7        # optional: 0.0-1.0
+
+[models]
+fast = "deepseek/deepseek-chat-v3-0324:free"
+thinking = "deepseek/deepseek-r1-0528:free"
+default = "mistralai/devstral-2512:free"
+```
+
+edit this file directly to change your defaults. cli flags override config values.
+
+### repository scope rules
+
+to make scopes deterministic, add a `commit-wizard.config.toml` at your repo root. rules are evaluated top-to-bottom; the first match wins.
+
+```toml
+[scopes]
+omit_scope_if_single = false
+omit_scope_if_ambiguous = true
+
+[[scopes.rules]]
+match = "src/validation/**"
+scope = "validation"
+
+[[scopes.rules]]
+match = "src/git/**"
+scope = "git"
+
+[[scopes.rules]]
+match = "src/**"
+scope = "engine"
 ```
 
 ---
@@ -280,7 +353,7 @@ commit wizard works with any openai-compatible api. popular choices:
 
 <details>
 <summary><strong>how much does it cost to use?</strong></summary>
-<p>using openrouter with the default free model (`deepseek/deepseek-r1-0528:free`) costs nothing. if you choose to use premium models, there are small per-request costs, but they are generally very low.</p>
+<p>using openrouter with the default free model (`mistralai/devstral-2512:free`) costs nothing. if you choose to use premium models, there are small per-request costs, but they are generally very low.</p>
 </details>
 
 <details>
@@ -296,12 +369,26 @@ this project is committed to high standards of code quality and release reliabil
 
 | check | tool | description |
 |---|---|---|
-| **unit & integration tests** | `cargo test` & `npm test` | validates that core rust logic and node.js bindings are working correctly across all supported platforms (linux, macos, windows). |
+| **unit & integration tests** | `cargo test` & node wrapper smoke | validates that core rust logic and the npm binary wrapper work correctly across all supported platforms (linux, macos, windows). |
 | **code quality linting** | `clippy` | automatically checks for common rust pitfalls and ensures the code is idiomatic and performant. |
 | **security vulnerability scanning** | `cargo audit` | scans all rust dependencies for known security vulnerabilities to prevent supply chain attacks. |
 | **commit message linting** | `commitlint` | enforces that every commit in a pull request follows the conventional commits specification. |
 | **consistent build environment**| node.js & rust versions | ensures that all builds and tests run in a consistent environment to prevent platform-specific bugs. |
 | **automated releases** | github actions & `gh` | creates automated, tagged releases on github and publishes to npm, with artifacts for all platforms. |
+
+### eval harness (accuracy tracking)
+
+commit wizard includes a fixture-based eval tool to track type/scope accuracy over time:
+
+```bash
+# run eval locally
+cargo run --bin eval-tool -- --fixtures fixtures/eval --headless-json
+
+# enforce thresholds (optional)
+cargo run --bin eval-tool -- --fixtures fixtures/eval --min-type-accuracy 0.8
+```
+
+add fixtures under `fixtures/eval` to grow the evaluation set.
 
 ---
 
@@ -315,7 +402,7 @@ this project uses a semi-automated release process driven by github actions. her
 
 1.  **preparation**: for a new release, a maintainer will typically bump the version numbers in `cargo.toml` and `package.json` and run a local script to update the `changelog.md`.
 2.  **triggering the release**: the release process is triggered when a new tag is pushed to the repository in the format `v*` (e.g., `v1.4.0`).
-3.  **automation**: the `build & release` workflow automatically builds the binaries and napi modules for all platforms, runs tests, and publishes the release to both github and npm.
+3.  **automation**: the `build & release` workflow automatically builds the binaries for all platforms, runs tests, and publishes the release to both github and npm.
 
 if you are contributing, you do not need to worry about this process. simply create a pull request with your changes, and a maintainer will handle the release.
 

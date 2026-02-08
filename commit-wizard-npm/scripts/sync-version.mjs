@@ -5,17 +5,17 @@ async function syncVersions() {
   try {
     // get the workspace root directory - handle being called from different locations
     const currentDir = process.cwd();
-    let workspaceRoot, napiDir;
+    let workspaceRoot, npmDir;
     
-    // check if we're already in the napi directory
-    if (currentDir.endsWith('commit-wizard-napi')) {
-      napiDir = currentDir;
-      workspaceRoot = path.resolve(napiDir, '..');
+    // check if we're already in the npm wrapper directory
+    if (currentDir.endsWith('commit-wizard-npm')) {
+      npmDir = currentDir;
+      workspaceRoot = path.resolve(npmDir, '..');
     } 
     // check if we're in the workspace root
-    else if (await fs.access(path.join(currentDir, 'commit-wizard-napi', 'package.json')).then(() => true).catch(() => false)) {
+    else if (await fs.access(path.join(currentDir, 'commit-wizard-npm', 'package.json')).then(() => true).catch(() => false)) {
       workspaceRoot = currentDir;
-      napiDir = path.join(workspaceRoot, 'commit-wizard-napi');
+      npmDir = path.join(workspaceRoot, 'commit-wizard-npm');
     }
     // try to find workspace root by looking for Cargo.toml
     else {
@@ -23,7 +23,7 @@ async function syncVersions() {
       while (searchDir !== path.dirname(searchDir)) {
         if (await fs.access(path.join(searchDir, 'Cargo.toml')).then(() => true).catch(() => false)) {
           workspaceRoot = searchDir;
-          napiDir = path.join(workspaceRoot, 'commit-wizard-napi');
+          npmDir = path.join(workspaceRoot, 'commit-wizard-npm');
           break;
         }
         searchDir = path.dirname(searchDir);
@@ -35,7 +35,7 @@ async function syncVersions() {
     }
     
     console.log(`workspace root: ${workspaceRoot}`);
-    console.log(`napi directory: ${napiDir}`);
+    console.log(`npm wrapper directory: ${npmDir}`);
     
     // read the workspace Cargo.toml to get the version
     const cargoPath = path.join(workspaceRoot, 'Cargo.toml');
@@ -52,8 +52,8 @@ async function syncVersions() {
     const version = versionMatch[1];
     console.log(`found workspace version: ${version}`);
     
-    // update package.json in the NAPI crate
-    const packagePath = path.join(napiDir, 'package.json');
+    // update package.json in the npm wrapper package
+    const packagePath = path.join(npmDir, 'package.json');
     console.log(`updating package.json at: ${packagePath}`);
     
     const packageContent = await fs.readFile(packagePath, 'utf8');
@@ -81,8 +81,8 @@ async function syncVersions() {
     
     // also check for any nested package.json files that need syncing
     const nestedPackagePatterns = [
-      path.join(napiDir, 'npm', '*', 'package.json'),
-      path.join(napiDir, '*', 'npm', '*', 'package.json')
+      path.join(npmDir, 'npm', '*', 'package.json'),
+      path.join(npmDir, '*', 'npm', '*', 'package.json')
     ];
     
     for (const pattern of nestedPackagePatterns) {

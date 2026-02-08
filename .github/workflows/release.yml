@@ -29,7 +29,7 @@ jobs:
           git -C "$REPO" add demo.txt
       - name: run cli --test-diff (ai-free)
         working-directory: commit-wizard-cli
-        run: cargo run -- --test-diff --path /tmp/cw-e2e
+        run: cargo run -- --test-diff --headless-json --path /tmp/cw-e2e
 
   build:
     uses: ./.github/workflows/common-build.yml
@@ -53,22 +53,28 @@ jobs:
           node-version: 20
           registry-url: 'https://registry.npmjs.org/'
           cache: npm
-          cache-dependency-path: commit-wizard-napi/package-lock.json
+          cache-dependency-path: commit-wizard-npm/package-lock.json
       - name: download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: setup napi artifacts for npm
+      - name: prepare npm binary packages
         run: |
-          cp artifacts/bindings-linux-x64-gnu/*.node commit-wizard-napi/
-          cp artifacts/bindings-darwin-x64/*.node commit-wizard-napi/
-          cp artifacts/bindings-darwin-arm64/*.node commit-wizard-napi/
-          cp artifacts/bindings-win32-x64-msvc/*.node commit-wizard-napi/
-      - name: publish to npm
+          cd commit-wizard-npm
+          CW_ARTIFACTS_DIR=../artifacts node ./scripts/prepare-host-for-prepublish.mjs
+      - name: publish platform packages to npm
         run: |
-          cd commit-wizard-napi
-          npm install
-          npm run prepare_for_prepublish
+          set -euo pipefail
+          for platform in linux-x64-gnu darwin-x64 darwin-arm64 win32-x64-msvc; do
+            cd commit-wizard-npm/npm/$platform
+            npm publish --access public
+            cd - >/dev/null
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: publish root package to npm
+        run: |
+          cd commit-wizard-npm
           if [[ "${{ github.repository }}" == "jamiehdev/commit-wizard" && "${{ github.ref_type }}" == "tag" && "${{ github.event_name }}" == "push" ]]; then
             npm publish --access public
             echo "✅ published to npm"
@@ -107,20 +113,10 @@ jobs:
             - macos x64: commit-wizard-macos-x64.tar.gz
             - macos arm64: commit-wizard-macos-arm64.tar.gz
             - windows x64: commit-wizard-windows-x64.tar.gz
-
-            ### napi modules (for development)
-            - linux x64: commit-wizard.linux-x64-gnu.node
-            - macos x64: commit-wizard.darwin-x64.node
-            - macos arm64: commit-wizard.darwin-arm64.node
-            - windows x64: commit-wizard.win32-x64-msvc.node
           files: |
             release-binaries/commit-wizard-linux-x64.tar.gz
             release-binaries/commit-wizard-macos-x64.tar.gz
             release-binaries/commit-wizard-macos-arm64.tar.gz
             release-binaries/commit-wizard-windows-x64.tar.gz
-            artifacts/bindings-linux-x64-gnu/commit-wizard.linux-x64-gnu.node
-            artifacts/bindings-darwin-x64/commit-wizard.darwin-x64.node
-            artifacts/bindings-darwin-arm64/commit-wizard.darwin-arm64.node
-            artifacts/bindings-win32-x64-msvc/commit-wizard.win32-x64-msvc.node
           draft: false
           prerelease: false

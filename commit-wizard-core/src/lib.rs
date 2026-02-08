@@ -2,27 +2,23 @@
 
 // declare modules
 pub mod ai;
+pub mod analysis;
+pub mod engine;
 pub mod git;
 pub mod utils;
 
 // re-export key structs/functions for external use by other crates
 pub use anyhow::{Context, Result}; // re-export for convenience
 pub use clap::Parser; // re-export Parser for CLI crate
-pub use console::style; // re-export for CLI/NAPI crates if they do printing
-pub use dialoguer::{theme::ColorfulTheme, Select}; // re-export for CLI/NAPI
+use console::style;
 pub use dotenv::dotenv;
-pub use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 pub use std::env;
 use std::fs;
-pub use std::process::Command as StdCommand;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-pub use std::time::Duration;
 
-pub use crate::ai::{generate_conventional_commit, generate_conventional_commit_with_model};
+pub use crate::ai::{generate_conventional_commit, generate_conventional_commit_with_model, GenerationResult};
+pub use crate::analysis::{derive_scope_candidates, AiControl, ScopeStrategy};
+pub use crate::engine::{generate_commit_message, CommitGenerationResult};
 pub use crate::git::{get_diff_info, get_staged_files, has_staged_changes, DiffInfo, ModifiedFile};
 
 // configuration structure for commit-wizard
@@ -31,6 +27,29 @@ pub struct Config {
     pub models: ModelConfig,
     pub current_model: Option<String>, // save user's preferred model
     pub auto_select: bool,             // enable automatic complexity-based selection
+    // AI knobs with serde defaults for backward compat with old config files
+    #[serde(default = "default_ai_control")]
+    pub ai_control: AiControl,
+    #[serde(default = "default_scope_strategy")]
+    pub scope_strategy: ScopeStrategy,
+    #[serde(default = "default_scope_aliases")]
+    pub scope_aliases: bool,
+    #[serde(default)]
+    pub min_scope_confidence: Option<f32>,
+    #[serde(default)]
+    pub min_confidence: Option<f32>,
+}
+
+fn default_ai_control() -> AiControl {
+    AiControl::High
+}
+
+fn default_scope_strategy() -> ScopeStrategy {
+    ScopeStrategy::Free
+}
+
+fn default_scope_aliases() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -43,7 +62,7 @@ pub struct ModelConfig {
 }
 
 fn default_model() -> String {
-    "deepseek/deepseek-r1-0528-qwen3-8b:free".to_string()
+    "mistralai/devstral-2512:free".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -58,8 +77,12 @@ impl Default for Config {
             models: ModelConfig {
                 fast: "deepseek/deepseek-chat-v3-0324:free".to_string(),
                 thinking: "deepseek/deepseek-r1-0528:free".to_string(),
-                default: "deepseek/deepseek-r1-0528-qwen3-8b:free".to_string(),
+                default: "mistralai/devstral-2512:free".to_string(),
                 available: vec![
+                    AvailableModel {
+                        name: "mistralai/devstral-2512:free".to_string(),
+                        description: "mistral devstral 2512 (free - strong code model)".to_string(),
+                    },
                     AvailableModel {
                         name: "deepseek/deepseek-r1-0528:free".to_string(),
                         description: "deepseek r1 (thinking model - best for complex commits)"
@@ -98,11 +121,16 @@ impl Default for Config {
             },
             current_model: None, // no saved model initially
             auto_select: false,  // default to not auto-selecting
+            ai_control: AiControl::High,
+            scope_strategy: ScopeStrategy::Free,
+            scope_aliases: true,
+            min_scope_confidence: None,
+            min_confidence: None,
         }
     }
 }
 
-// argument parsing struct - this can be shared by CLI and NAPI (if NAPI parses from Vec<String>)
+// argument parsing struct - this can be shared by CLI and npm wrapper (if it parses from Vec<String>)
 #[derive(Parser, Debug, Clone)] // added Clone
 #[command(name = "commit-wizard-core")] // generic name for the core functionality
 pub struct CoreCliArgs {
@@ -130,6 +158,44 @@ pub struct CoreCliArgs {
     #[arg(long)]
     pub debug: bool,
 
+    /// Run without interactive prompts (prints commit message only).
+    #[arg(long)]
+    pub headless: bool,
+
+    /// Output machine-readable JSON (implies --headless).
+    #[arg(long)]
+    pub headless_json: bool,
+
+    /// Use the structured classifier pipeline (experimental).
+    #[arg(long)]
+    pub use_classifier: bool,
+
+    /// Minimum acceptable classifier confidence (0.0-1.0, requires --use-classifier).
+    #[arg(long)]
+    pub min_confidence: Option<f32>,
+
+    /// Minimum acceptable scope confidence (0.0-1.0, requires --use-classifier).
+    #[arg(long)]
+    pub min_scope_confidence: Option<f32>,
+
+    /// AI control preset (high, balanced, strict). Overrides config default when set.
+    #[arg(long, value_enum)]
+    pub ai_control: Option<AiControl>,
+
+    /// Strategy for scope selection (auto, conservative, free). Overrides config default when set.
+    #[arg(long, value_enum)]
+    pub scope_strategy: Option<ScopeStrategy>,
+
+    /// Allow alias scopes derived from common prefixes (e.g., core/cli). Overrides config default when set.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        action = clap::ArgAction::Set,
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub scope_aliases: Option<bool>,
+
     /// use smart model selection: fast model for simple commits, thinking model for complex ones
     #[arg(long)]
     pub smart_model: bool,
@@ -147,8 +213,30 @@ pub struct CoreCliArgs {
     pub ai_smoke: bool,
 }
 
+impl CoreCliArgs {
+    pub fn effective_ai_control(&self, config: &Config) -> AiControl {
+        self.ai_control.unwrap_or(config.ai_control)
+    }
+
+    pub fn effective_scope_strategy(&self, config: &Config) -> ScopeStrategy {
+        self.scope_strategy.unwrap_or(config.scope_strategy)
+    }
+
+    pub fn effective_scope_aliases(&self, config: &Config) -> bool {
+        self.scope_aliases.unwrap_or(config.scope_aliases)
+    }
+
+    pub fn effective_min_confidence(&self, config: &Config) -> Option<f32> {
+        self.min_confidence.or(config.min_confidence)
+    }
+
+    pub fn effective_min_scope_confidence(&self, config: &Config) -> Option<f32> {
+        self.min_scope_confidence.or(config.min_scope_confidence)
+    }
+}
+
 /// get a safe fallback model that should always work
-fn safe_fallback_model(config: &Config) -> String {
+pub(crate) fn safe_fallback_model(config: &Config) -> String {
     // try in order of preference
     if config
         .models
@@ -173,7 +261,11 @@ fn safe_fallback_model(config: &Config) -> String {
 }
 
 /// get the current model to use based on config, args, and diff complexity
-fn get_current_model(config: &Config, args: &CoreCliArgs, diff_info: Option<&DiffInfo>) -> String {
+pub fn get_current_model(
+    config: &Config,
+    args: &CoreCliArgs,
+    diff_info: Option<&DiffInfo>,
+) -> String {
     // if user has auto-complexity enabled, always use complexity-based selection
     if config.auto_select {
         if let Some(diff) = diff_info {
@@ -195,12 +287,12 @@ fn get_current_model(config: &Config, args: &CoreCliArgs, diff_info: Option<&Dif
         }
     }
 
-    // fallback to environment variable or default thinking model
-    env::var("OPENROUTER_MODEL").unwrap_or_else(|_| config.models.thinking.clone())
+    // fallback to environment variable or configured default model
+    env::var("OPENROUTER_MODEL").unwrap_or_else(|_| config.models.default.clone())
 }
 
 /// get a human-readable description for a model name
-fn get_model_description(config: &Config, model_name: &str) -> String {
+pub fn get_model_description(config: &Config, model_name: &str) -> String {
     for available_model in &config.models.available {
         if available_model.name == model_name {
             return available_model.description.clone();
@@ -218,18 +310,12 @@ fn get_model_description(config: &Config, model_name: &str) -> String {
     model_name.to_string()
 }
 
-// the core commit generation and interaction logic
-pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bool)> {
-    // load configuration once
-    let mut config = load_config()?;
-
-    // centralised API key validation - check both existence and content
+pub fn ensure_api_key_present() -> Result<()> {
     dotenv().ok();
     let api_key = env::var("OPENROUTER_API_KEY").map_err(|_| {
         anyhow::anyhow!("OPENROUTER_API_KEY environment variable is not set. please set it with: export OPENROUTER_API_KEY=your-api-key")
     })?;
 
-    // trim the API key and validate - store trimmed version for actual use
     let api_key = api_key.trim();
     if api_key.is_empty() {
         return Err(anyhow::anyhow!(
@@ -237,1146 +323,142 @@ pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bo
         ));
     }
 
-    // background refresh of model catalogue (non-blocking)
-    let is_updating_models = Arc::new(AtomicBool::new(true));
-    let just_updated_models = Arc::new(AtomicBool::new(false));
-    {
-        let updating = is_updating_models.clone();
-        let updated = just_updated_models.clone();
-        tokio::spawn(async move {
-            // refresh model cache; ignore errors silently
-            let _ = fetch_openrouter_models().await;
-            updating.store(false, Ordering::Relaxed);
-            updated.store(true, Ordering::Relaxed);
-        });
-    }
+    Ok(())
+}
+
+// headless entry point for core usage
+pub async fn execute_commit_wizard_flow(args: CoreCliArgs) -> Result<(String, bool)> {
+    // load configuration once
+    let mut config = load_config()?;
 
     // test mode: validate git diff processing without user interaction
     if args.test_diff {
         return test_git_diff_processing(&args).await;
     }
 
-    // welcome banner
-    println!(
-        "{}",
-        style("\ncommit-wizard 🧙 (core engine)").cyan().bold()
-    );
-    println!(
-        "{}\n",
-        style("ai-powered conventional commit message generator").dim()
-    );
+    let is_headless = args.headless || args.headless_json;
+    if args.headless_json && args.debug {
+        return Err(anyhow::anyhow!(
+            "--debug is not supported with --headless-json (use --headless instead)"
+        ));
+    }
+    let min_confidence = args.effective_min_confidence(&config);
+    let min_scope_confidence = args.effective_min_scope_confidence(&config);
 
-    loop {
-        // show one-time background update completion notice
-        if just_updated_models.swap(false, Ordering::Relaxed) {
-            println!(
-                "{}",
-                style("✅ model catalogue updated in the background").green()
-            );
+    if let Some(min_confidence) = min_confidence {
+        if !(0.0..=1.0).contains(&min_confidence) {
+            return Err(anyhow::anyhow!(
+                "--min-confidence must be between 0.0 and 1.0"
+            ));
         }
-
-        let current_model_text = if config.auto_select {
-            "auto-complexity".to_string()
-        } else {
-            get_current_model(&config, &args, None)
-        };
-
-        let model_settings_option = {
-            let updating_suffix = if is_updating_models.load(Ordering::Relaxed) {
-                style(" (updating...)").dim().to_string()
-            } else {
-                String::new()
-            };
-            format!(
-                "model settings - current: {}{}",
-                style(&current_model_text).yellow(),
-                updating_suffix
-            )
-        };
-
-        let options = &[
-            "generate commit message".to_string(),
-            model_settings_option,
-            "refresh model catalogue now".to_string(),
-            "exit".to_string(),
-        ];
-
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("what would you like to do?")
-            .default(0)
-            .items(options)
-            .interact()?;
-
-        match selection {
-            0 => {
-                // Generate commit message
-                // this will now contain the original logic and will return, breaking the loop
-                return run_generate_and_commit_flow(args.clone(), &mut config).await;
-            }
-            1 => {
-                // Model settings
-                handle_model_settings(&mut config, &args).await?;
-                println!(); // add a blank line for spacing before menu shows again
-            }
-            2 => {
-                // manual model refresh
-                let pb = ProgressBar::new_spinner();
-                pb.set_style(
-                    ProgressStyle::default_spinner()
-                        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-                        .template("{spinner:.blue} updating model catalogue...")
-                        .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-                );
-                pb.enable_steady_tick(Duration::from_millis(80));
-                match fetch_openrouter_models().await {
-                    Ok(models) => {
-                        pb.finish_and_clear();
-                        println!(
-                            "{} {} {}",
-                            style("✅").green(),
-                            style(models.len()).yellow().bold(),
-                            style("models available (catalogue refreshed)").green()
-                        );
-                    }
-                    Err(e) => {
-                        pb.finish_and_clear();
-                        eprintln!("{} {}", style("⚠️  failed to refresh models:").yellow(), e);
-                    }
-                }
-                println!();
-            }
-            3 => {
-                // Exit
-                println!("\n{}", style("👋 bye!").dim());
-                return Ok(("".to_string(), false));
-            }
-            _ => unreachable!(),
+        if !args.use_classifier {
+            return Err(anyhow::anyhow!(
+                "--min-confidence requires --use-classifier"
+            ));
         }
     }
+    if let Some(min_scope_confidence) = min_scope_confidence {
+        if !(0.0..=1.0).contains(&min_scope_confidence) {
+            return Err(anyhow::anyhow!(
+                "--min-scope-confidence must be between 0.0 and 1.0"
+            ));
+        }
+        if !args.use_classifier {
+            return Err(anyhow::anyhow!(
+                "--min-scope-confidence requires --use-classifier"
+            ));
+        }
+    }
+
+    if !is_headless {
+        return Err(anyhow::anyhow!(
+            "interactive mode is provided by commit-wizard-cli; re-run with --headless or use the CLI binary"
+        ));
+    }
+
+    // centralised API key validation - check both existence and content
+    ensure_api_key_present()?;
+
+    run_headless_flow(args, &mut config).await
 }
 
-/// handles the entire commit generation process
-async fn run_generate_and_commit_flow(
+/// handles headless commit generation without interactive prompts
+pub async fn run_headless_flow(
     args: CoreCliArgs,
     config: &mut Config,
 ) -> Result<(String, bool)> {
+    let is_headless = args.headless || args.headless_json;
     let repo_path = args.path.clone().unwrap_or_else(|| ".".to_string());
 
-    // validate git repository early for clearer errors
-    let repo = match git2::Repository::discover(&repo_path) {
-        Ok(r) => r,
-        Err(e) => return Err(anyhow::anyhow!("invalid git repository: {}", e)),
-    };
-
-    if repo.is_bare() {
-        return Err(anyhow::anyhow!("bare repositories not supported"));
-    }
-    if args.smart_model {
-        println!("{}", style("🤖 smart model selection enabled").green());
-        println!(
-            "{}\n",
-            style("automatically choosing optimal model based on commit complexity").dim()
-        );
-    }
-
-    match git::has_staged_changes(&repo_path) {
-        Ok(has_staged) => {
-            if has_staged {
-                if let Ok(files) = git::get_staged_files(&repo_path) {
-                    println!("{}\n", style("staged files:").cyan().bold());
-                    for file in files {
-                        println!("{}", style(format!("  - {file}")).green());
-                    }
-                    println!();
-                }
-            } else {
-                println!(
-                    "{}\n",
-                    style("⚠️  no staged changes found, will analyse unstaged changes instead")
-                        .yellow()
-                        .bold()
-                );
-            }
-        }
-        Err(e) => {
-            eprintln!(
-                "{} {}",
-                style("❌ error checking staged changes:").red().bold(),
-                style(e).red()
-            );
-        }
-    }
-
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .tick_strings(&[
-                "📊 ⠋", "📊 ⠙", "📊 ⠹", "📊 ⠸", "📊 ⠼", "📊 ⠴", "📊 ⠦", "📊 ⠧", "📊 ⠇", "📊 ⠏",
-            ])
-            .template("{spinner} analysing changes...")
-            .unwrap(),
-    );
-    spinner.enable_steady_tick(Duration::from_millis(120));
-
-    let diff_info = git::get_diff_info(
-        &repo_path,
-        args.max_size * 1024,
-        args.max_files,
-        args.verbose,
-    )
-    .context("failed to get git diff information")?;
-
-    spinner.finish_and_clear();
-
-    if args.verbose {
-        println!("found {} modified files", diff_info.files.len());
-        for file in &diff_info.files {
-            println!(
-                "- {} ({} lines added, {} lines removed)",
-                file.path, file.added_lines, file.removed_lines
-            );
-        }
-    }
-
-    if diff_info.files.is_empty() {
-        return Err(anyhow::anyhow!("no changes detected in the repository"));
-    }
-
-    let mut selected_model = get_current_model(config, &args, Some(&diff_info));
-    println!("{}", style("🤖 selected model:").cyan().bold());
-    if config.auto_select {
-        println!(
-            "{} {}",
-            style(&get_model_description(config, &selected_model)).yellow(),
-            style("(auto-complexity)").dim()
-        );
-    } else {
-        println!(
-            "{}",
-            style(&get_model_description(config, &selected_model)).yellow()
-        );
-    }
-    println!();
-
-    let mut commit_message = match ai::generate_conventional_commit_with_model(
-        &diff_info,
-        args.debug,
-        args.smart_model,
-        Some(selected_model.clone()),
+    let generation = crate::engine::generate_commit_message(
+        &args,
         config,
+        is_headless,
+        args.use_classifier,
     )
-    .await
-    {
-        Ok(message) => message,
-        Err(e) => {
-            let error_str = e.to_string();
-            if error_str.contains("invalid model") {
-                eprintln!("{} {}", style("❌ model error:").red(), e);
-                println!(
-                    "{}",
-                    style("🔧 automatically recovering with safe fallback model...").cyan()
-                );
+    .await?;
 
-                let fallback_model = safe_fallback_model(config);
-                selected_model = fallback_model.clone();
-
-                config.current_model = Some(fallback_model.clone());
-                config.auto_select = false;
-                if let Err(save_err) = save_config(config) {
-                    eprintln!(
-                        "{} failed to save recovery config: {}",
-                        style("⚠️").yellow(),
-                        save_err
-                    );
-                }
-
-                println!(
-                    "{} {}",
-                    style("✅ recovered with model:").green(),
-                    style(&get_model_description(config, &selected_model)).yellow()
-                );
-
-                ai::generate_conventional_commit_with_model(
-                    &diff_info,
-                    args.debug,
-                    args.smart_model,
-                    Some(selected_model.clone()),
-                    config,
-                )
-                .await
-                .context("failed to generate commit message even with fallback model")?
-            } else {
-                return Err(e.context("failed to generate commit message"));
-            }
-        }
-    };
-
-    println!(
-        "\n{}\n",
-        style("✅ generated commit message:").green().bold()
-    );
-    println!("{}", style(&commit_message).yellow());
-    println!();
-
-    let mut should_commit_now = args.yes;
+    let commit_message = generation.commit_message;
+    let selected_model = generation.selected_model;
+    let scope_reason = generation.scope_reason;
+    let scope_confidence = generation.scope_confidence;
+    let overall_confidence = generation.overall_confidence;
     let mut commit_succeeded = false;
 
-    if !args.yes {
-        println!("{}", style("press ctrl+c at any time to exit").dim());
-
-        loop {
-            let options = &[
-                "yes, commit this message",
-                "edit this message",
-                "no, regenerate message",
-                "model settings",
-            ];
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("what would you like to do?")
-                .default(0)
-                .items(options)
-                .interact()?;
-
-            match selection {
-                0 => {
-                    println!("{}", style("proceeding with commit...").green());
-                    should_commit_now = true;
-                    break;
-                }
-                1 => {
-                    println!("{}", style("opening editor for commit message...").cyan());
-                    if let Some(edited_message) = open_editor_for_message(&commit_message)? {
-                        commit_message = edited_message;
-                        println!("{}", style("commit message updated").green());
-                    } else {
-                        println!(
-                            "{}",
-                            style("edit cancelled, using previous message").yellow()
-                        );
-                    }
-                    println!("\n{}", style("current commit message:").cyan().bold());
-                    println!("{}", style(&commit_message).yellow());
-                    println!();
-                }
-                2 => {
-                    println!("\n{}", style("regenerating...").cyan());
-                    commit_message = ai::generate_conventional_commit_with_model(
-                        &diff_info,
-                        args.debug,
-                        args.smart_model,
-                        Some(selected_model.clone()),
-                        config,
-                    )
-                    .await
-                    .context("failed to regenerate commit message")?;
-                    println!(
-                        "\n{}\n",
-                        style("✅ newly generated commit message:").green().bold()
-                    );
-                    println!("{}", style(&commit_message).yellow());
-                    println!("\n{}", style("current commit message:").cyan().bold());
-                    println!("{}", style(&commit_message).yellow());
-                    println!();
-                }
-                3 => {
-                    // model settings
-                    println!("\n{}", style("model settings").cyan().bold());
-
-                    match select_model_interactively(config).await {
-                        Ok(new_model) => {
-                            if new_model == "AUTO_COMPLEXITY" {
-                                config.auto_select = true;
-                                config.current_model = None;
-                                if let Err(e) = save_config(config) {
-                                    eprintln!(
-                                        "{} {}",
-                                        style(
-                                            "⚠️  warning: failed to save auto-complexity setting:"
-                                        )
-                                        .yellow(),
-                                        e
-                                    );
-                                } else {
-                                    println!(
-                                        "{}",
-                                        style("✅ auto-complexity selection enabled and saved")
-                                            .green()
-                                    );
-                                }
-
-                                selected_model = get_current_model(config, &args, Some(&diff_info));
-                                println!(
-                                    "{} {}",
-                                    style("🤖 auto-selected:").cyan(),
-                                    style(get_model_description(config, &selected_model)).yellow()
-                                );
-                            } else {
-                                config.current_model = Some(new_model.clone());
-                                config.auto_select = false;
-                                if let Err(e) = save_config(config) {
-                                    eprintln!(
-                                        "{} {}",
-                                        style("⚠️  warning: failed to save model preference:")
-                                            .yellow(),
-                                        e
-                                    );
-                                } else {
-                                    println!(
-                                        "{} {}",
-                                        style("✅ model preference saved:").green(),
-                                        style(get_model_description(config, &new_model)).yellow()
-                                    );
-                                }
-
-                                selected_model = new_model;
-                            }
-
-                            // regenerate with new model
-                            println!("\n{}", style("regenerating with new model...").cyan());
-                            commit_message = ai::generate_conventional_commit_with_model(
-                                &diff_info,
-                                args.debug,
-                                args.smart_model,
-                                Some(selected_model.clone()),
-                                config,
-                            )
-                            .await
-                            .context("failed to regenerate commit message with new model")?;
-                            println!(
-                                "\n{}\n",
-                                style("✅ newly generated commit message:").green().bold()
-                            );
-                            println!("{}", style(&commit_message).yellow());
-                        }
-                        Err(e) => {
-                            if e.to_string() != "cancelled" {
-                                eprintln!(
-                                    "{} {}",
-                                    style("⚠️  model selection failed:").yellow(),
-                                    e
-                                );
-                            }
-                        }
-                    }
-                    println!("\n{}", style("current commit message:").cyan().bold());
-                    println!("{}", style(&commit_message).yellow());
-                    println!();
-                }
-                _ => unreachable!(),
-            }
+    if args.yes {
+        let outcome = commit_with_message(&repo_path, &commit_message)?;
+        if !outcome.success {
+            return Err(anyhow::anyhow!("git commit command failed: {}", outcome.stderr));
         }
-    } else {
-        println!(
-            "{}",
-            style("--yes flag detected, proceeding with generated message automatically.").green()
-        );
+        commit_succeeded = true;
     }
 
-    if should_commit_now {
-        println!("{}", style("executing commit command...").cyan());
-        let repo_dir_path = if repo_path == "." {
-            env::current_dir().context("Failed to get current directory")?
+    if is_headless {
+        if args.headless_json {
+            let output = HeadlessRunOutput {
+                mode: "run",
+                commit_message: commit_message.clone(),
+                commit_succeeded,
+                selected_model,
+                scope_reason,
+                scope_confidence,
+                overall_confidence,
+            };
+            print_headless_json(&output)?;
         } else {
-            std::path::PathBuf::from(&repo_path)
-        };
-
-        let output = StdCommand::new("git")
-            .current_dir(repo_dir_path)
-            .args(["commit", "-m", &commit_message])
-            .output()
-            .context("failed to execute git commit command")?;
-
-        if output.status.success() {
-            println!("{}", style("\n✅ commit successful!").green().bold());
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                if !stdout.trim().is_empty() {
-                    println!("{stdout}");
-                }
-            }
-            commit_succeeded = true;
-        } else {
-            eprintln!("{}", style("\n❌ commit failed:").red().bold());
-            if let Ok(stderr) = String::from_utf8(output.stderr) {
-                if !stderr.trim().is_empty() {
-                    eprintln!("{stderr}");
-                }
-            }
-            return Err(anyhow::anyhow!("git commit command failed"));
+            println!("{commit_message}");
         }
     }
 
     Ok((commit_message, commit_succeeded))
 }
 
-/// handles interactive model settings changes
-async fn handle_model_settings(config: &mut Config, args: &CoreCliArgs) -> Result<()> {
-    let current_model_desc = get_model_description(config, &get_current_model(config, args, None));
-
-    println!("\n{}", style("model settings").cyan().bold());
-    println!(
-        "{} {}",
-        style("current model:").dim(),
-        style(current_model_desc).yellow()
-    );
-    println!();
-
-    match select_model_interactively(config).await {
-        Ok(new_model) => {
-            if new_model == "AUTO_COMPLEXITY" {
-                config.auto_select = true;
-                config.current_model = None;
-                if let Err(e) = save_config(config) {
-                    eprintln!(
-                        "{} {}",
-                        style("⚠️  warning: failed to save auto-complexity setting:").yellow(),
-                        e
-                    );
-                } else {
-                    println!(
-                        "{}",
-                        style("✅ auto-complexity selection enabled and saved").green()
-                    );
-                }
-            } else {
-                config.current_model = Some(new_model.clone());
-                config.auto_select = false;
-                if let Err(e) = save_config(config) {
-                    eprintln!(
-                        "{} {}",
-                        style("⚠️  warning: failed to save model preference:").yellow(),
-                        e
-                    );
-                } else {
-                    let new_model_desc = get_model_description(config, &new_model);
-                    println!(
-                        "{} {}",
-                        style("✅ model updated:").green(),
-                        style(new_model_desc).yellow()
-                    );
-                }
-            }
-        }
-        Err(e) => {
-            if e.to_string() != "cancelled" {
-                eprintln!("{} {}", style("⚠️  model selection failed:").yellow(), e);
-            }
-        }
-    }
-    Ok(())
+pub struct CommitOutcome {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
 }
 
-// helper function for editing the message
-fn open_editor_for_message(current_message: &str) -> Result<Option<String>> {
-    use crossterm::terminal::disable_raw_mode;
-    use std::{
-        env,
-        fs::{self, File},
-        io::Write,
-        process::{Command, Stdio},
-        time::{SystemTime, UNIX_EPOCH},
-    };
-    use which::which;
-
-    // pick a filename with a monotonically-increasing suffix
-    let millis = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
-    let tmp_path = env::temp_dir().join(format!("commit-wizard-{millis}.txt"));
-
-    // Write the current message to the temp file
-    {
-        let mut file = File::create(&tmp_path)
-            .with_context(|| format!("failed to create {}", tmp_path.display()))?;
-        file.write_all(current_message.as_bytes())
-            .context("failed to write initial commit message")?;
-    }
-
-    let _ = disable_raw_mode();
-
-    let editor = if let Ok(vis) = env::var("VISUAL") {
-        vis
-    } else if let Ok(ed) = env::var("EDITOR") {
-        ed
+pub fn commit_with_message(repo_path: &str, message: &str) -> Result<CommitOutcome> {
+    let repo_dir_path = if repo_path == "." {
+        env::current_dir().context("failed to get current directory")?
     } else {
-        // fallback to first available editor
-        // prioritise editors that are more commonly available on different platforms
-        let candidates = [
-            "vim",     // usually available on macos/linux by default
-            "vi",      // universal fallback
-            "nvim",    // popular modern alternative
-            "code -w", // vscode (if installed and configured)
-            "nano",    // simple fallback
-        ];
-
-        let mut selected_editor = None;
-        for &candidate in &candidates {
-            let command = candidate.split_whitespace().next().unwrap();
-            if which(command).is_ok() {
-                selected_editor = Some(candidate.to_string());
-                break;
-            }
-        }
-
-        match selected_editor {
-            Some(editor) => editor,
-            None => {
-                println!(
-                    "{}",
-                    style("no suitable editor found, falling back to nano").yellow()
-                );
-                "nano".to_string()
-            }
-        }
+        std::path::PathBuf::from(repo_path)
     };
 
-    // Split the editor string into command and arguments if any (e.g., "code -w")
-    let mut editor_parts = editor.split_whitespace();
-    let editor_executable = editor_parts.next().unwrap_or(&editor); // Use full string if no spaces
-    let editor_args = editor_parts.collect::<Vec<&str>>();
+    let output = std::process::Command::new("git")
+        .current_dir(repo_dir_path)
+        .args(["commit", "-m", message])
+        .output()
+        .context("failed to execute git commit command")?;
 
-    let status = Command::new(editor_executable)
-        .args(&editor_args) // Pass arguments if any
-        .arg(&tmp_path)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .with_context(|| format!("failed to execute editor '{editor}'"))?;
-
-    if !status.success() {
-        eprintln!(
-            "{}",
-            style(format!("editor '{editor}' exited with error: {status}")).yellow()
-        );
-        let _ = fs::remove_file(&tmp_path);
-        return Ok(None); // Editor failed or user aborted
-    }
-
-    // read the edited content
-    let edited = fs::read_to_string(&tmp_path)
-        .with_context(|| format!("failed to read {}", tmp_path.display()))?;
-    let _ = fs::remove_file(&tmp_path);
-
-    if edited.trim_end() != current_message.trim_end() {
-        Ok(Some(edited.trim_end().to_string()))
-    } else {
-        println!(
-            "{}",
-            style("no changes detected; using previous message").yellow()
-        );
-        Ok(None)
-    }
+    Ok(CommitOutcome {
+        success: output.status.success(),
+        stdout: String::from_utf8(output.stdout).unwrap_or_default(),
+        stderr: String::from_utf8(output.stderr).unwrap_or_default(),
+    })
 }
 
-/// enhanced interactive model selection menu with search and api integration
-async fn select_model_interactively(config: &Config) -> Result<String> {
-    use dialoguer::{theme::ColorfulTheme, Select};
-
-    println!("{}", style("🤖 model selection").cyan().bold());
-
-    // first, ask what they want to do
-    let main_options = vec![
-        "select from configured models",
-        "browse all openrouter models",
-        "enable auto-complexity selection",
-    ];
-
-    let main_choice = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("choose an option")
-        .items(&main_options)
-        .interact()
-        .context("failed to interact with main model menu")?;
-
-    match main_choice {
-        0 => {
-            // select from configured models
-            let models = ai::get_available_models(config);
-            if models.is_empty() {
-                return Err(anyhow::anyhow!("no models configured"));
-            }
-
-            let model_descriptions: Vec<&str> = models.iter().map(|(_, desc)| *desc).collect();
-
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("choose model")
-                .items(&model_descriptions)
-                .interact()
-                .context("failed to select model")?;
-
-            Ok(models[selection].0.to_string())
-        }
-        1 => {
-            // browse all openrouter models with search
-            browse_openrouter_models().await
-        }
-        2 => {
-            // enable auto-complexity selection (return special marker)
-            println!("{}", style("✅ auto-complexity selection enabled").green());
-            Ok("AUTO_COMPLEXITY".to_string())
-        }
-        _ => unreachable!(),
-    }
-}
-
-/// browse openrouter models with search functionality
-async fn browse_openrouter_models() -> Result<String> {
-    println!("{}", style("🔄 fetching models from openrouter...").cyan());
-
-    let all_models = match fetch_openrouter_models().await {
-        Ok(models) => models,
-        Err(e) => {
-            eprintln!("{} {}", style("⚠️  failed to fetch models:").yellow(), e);
-            println!("{}", style("falling back to configured models").dim());
-            return Err(anyhow::anyhow!("failed to fetch openrouter models"));
-        }
-    };
-
-    if all_models.is_empty() {
-        return Err(anyhow::anyhow!("no models available from openrouter"));
-    }
-
-    println!(
-        "{} {} {}",
-        style("✅").green(),
-        style(all_models.len()).yellow().bold(),
-        style("models found").green()
-    );
-
-    // use intelligent autosuggestion interface
-    intelligent_model_search(&all_models).await
-}
-
-/// intelligent model search with real-time filtering and arrow key navigation
-async fn intelligent_model_search(all_models: &[AvailableModel]) -> Result<String> {
-    use crossterm::{
-        cursor,
-        event::{self, Event, KeyCode, KeyEvent},
-        execute,
-        terminal::{self, disable_raw_mode, enable_raw_mode, size},
-    };
-    use std::io::{stdout, Write};
-
-    // guard to ensure cursor is shown again on drop
-    struct CursorGuard;
-    impl Drop for CursorGuard {
-        fn drop(&mut self) {
-            let _ = execute!(stdout(), cursor::Show);
-        }
-    }
-
-    // extract just model names for cleaner display
-    let model_names: Vec<String> = all_models.iter().map(|m| m.name.clone()).collect();
-
-    let mut search_query = String::new();
-    let mut filtered_models = model_names.clone();
-    let mut current_selection = 0;
-    let window_size = 5;
-
-    // enable raw mode for direct key input and hide cursor
-    enable_raw_mode().context("failed to enable raw mode")?;
-    execute!(stdout(), cursor::Hide)?;
-
-    // ensure cursor is shown again on early return
-    let _cursor_guard = CursorGuard;
-
-    let result = loop {
-        // get terminal size with fallback
-        let terminal_width = match size() {
-            Ok((width, _)) => (width as usize).min(100), // reasonable width
-            Err(_) => 80,
-        };
-
-        // calculate max model name width
-        let max_name_width = terminal_width.saturating_sub(10);
-
-        // clear screen completely
-        execute!(
-            stdout(),
-            terminal::Clear(terminal::ClearType::All),
-            cursor::MoveTo(0, 0)
-        )?;
-
-        // build output with nice styling
-        let mut lines = Vec::new();
-
-        // header with cyan title
-        lines.push(format!(
-            "{} {}",
-            style("🔍").dim(),
-            style("intelligent model search").cyan().bold()
-        ));
-
-        // stats in dim style
-        lines.push(format!(
-            "{} {} {}",
-            style("📊").dim(),
-            style(all_models.len()).yellow().bold(),
-            style("total models available").dim()
-        ));
-
-        if !search_query.is_empty() {
-            lines.push(format!(
-                "{} {} {}",
-                style("🎯").dim(),
-                style("filtering by:").dim(),
-                style(format!("'{search_query}'")).green().bold()
-            ));
-        }
-
-        lines.push(format!(
-            "{} {} {}",
-            style("✨").dim(),
-            style(filtered_models.len()).yellow().bold(),
-            style("matches found").dim()
-        ));
-        lines.push("".to_string()); // blank line
-
-        if filtered_models.is_empty() {
-            lines.push(style("no models match your search").red().dim().to_string());
-            lines.push(style("type to search, esc to go back").dim().to_string());
-        } else {
-            // ensure current selection is valid
-            current_selection = current_selection.min(filtered_models.len().saturating_sub(1));
-
-            // calculate sliding window
-            let (window_start, window_end) =
-                calculate_sliding_window(current_selection, filtered_models.len(), window_size);
-            let visible_models = &filtered_models[window_start..window_end];
-
-            lines.push(format!(
-                "{} {}-{} {} {}",
-                style("showing").dim(),
-                style(window_start + 1).cyan(),
-                style(window_end).cyan(),
-                style("of").dim(),
-                style(filtered_models.len()).cyan()
-            ));
-            lines.push("".to_string()); // blank line
-
-            // display models with colors
-            for (i, model_name) in visible_models.iter().enumerate() {
-                let absolute_index = window_start + i;
-                let is_current = absolute_index == current_selection;
-
-                // truncate if needed
-                let display_name = if model_name.len() > max_name_width {
-                    format!("{}...", &model_name[..max_name_width.saturating_sub(3)])
-                } else {
-                    model_name.clone()
-                };
-
-                // split model name into provider/model for better coloring
-                let formatted_name = if let Some(slash_pos) = display_name.find('/') {
-                    let (provider, model) = display_name.split_at(slash_pos);
-                    let model = &model[1..]; // skip the slash
-
-                    if is_current {
-                        format!(
-                            "{}{}{}",
-                            style(provider).cyan().bold(),
-                            style("/").dim(),
-                            style(model).white().bold()
-                        )
-                    } else {
-                        format!(
-                            "{}{}{}",
-                            style(provider).blue().dim(),
-                            style("/").dim(),
-                            style(model).white().dim()
-                        )
-                    }
-                } else if is_current {
-                    style(display_name).white().bold().to_string()
-                } else {
-                    style(display_name).white().dim().to_string()
-                };
-
-                if is_current {
-                    lines.push(format!("{} {}", style("►").green().bold(), formatted_name));
-                } else {
-                    lines.push(format!("  {formatted_name}"));
-                }
-            }
-        }
-
-        lines.push("".to_string()); // blank line
-
-        // search input with styling
-        let search_display = if search_query.len() > max_name_width.saturating_sub(10) {
-            format!("{}...", &search_query[..max_name_width.saturating_sub(13)])
-        } else {
-            search_query.clone()
-        };
-
-        let cursor = if !search_query.is_empty() || filtered_models.is_empty() {
-            style("█").green().to_string()
-        } else {
-            "".to_string()
-        };
-
-        let search_line = format!(
-            "{} {}{}",
-            style("search:").cyan().bold(),
-            style(search_display).white(),
-            cursor
-        );
-        lines.push(search_line);
-        lines.push("".to_string()); // blank line
-
-        // controls with better formatting
-        if !filtered_models.is_empty() {
-            lines.push(format!(
-                "{} {} {} {} {} {} {} {}",
-                style("↑↓").green().bold(),
-                style("navigate").dim(),
-                style("•").dim(),
-                style("enter").green().bold(),
-                style("select").dim(),
-                style("•").dim(),
-                style("esc").red().bold(),
-                style("back").dim()
-            ));
-        } else {
-            lines.push(format!(
-                "{} {} {} {} {}",
-                style("type").green().bold(),
-                style("to search").dim(),
-                style("•").dim(),
-                style("esc").red().bold(),
-                style("back").dim()
-            ));
-        }
-
-        // print all lines cleanly
-        for line in lines {
-            // prepend carriage return to ensure we start at column 0 even in raw mode
-            // raw mode disables automatic carriage-return on newline, so we do it manually
-            println!("\r{line}");
-        }
-
-        stdout().flush()?;
-
-        // handle input
-        if let Event::Key(KeyEvent { code, .. }) = event::read()? {
-            match code {
-                KeyCode::Up => {
-                    if !filtered_models.is_empty() && current_selection > 0 {
-                        current_selection -= 1;
-                    }
-                }
-                KeyCode::Down => {
-                    if !filtered_models.is_empty() && current_selection < filtered_models.len() - 1
-                    {
-                        current_selection += 1;
-                    }
-                }
-                KeyCode::Enter => {
-                    if !filtered_models.is_empty() {
-                        let selected_model = filtered_models[current_selection].clone();
-                        break Ok(selected_model);
-                    } else if !search_query.is_empty() {
-                        search_query.clear();
-                        filtered_models = model_names.clone();
-                        current_selection = 0;
-                    }
-                }
-                KeyCode::Esc => {
-                    break Err(anyhow::anyhow!("cancelled"));
-                }
-                KeyCode::Backspace => {
-                    if !search_query.is_empty() {
-                        search_query.pop();
-                        filtered_models = intelligent_filter(&model_names, &search_query);
-                        current_selection = 0;
-                    }
-                }
-                KeyCode::Char(c) => {
-                    search_query.push(c);
-                    filtered_models = intelligent_filter(&model_names, &search_query);
-                    current_selection = 0;
-                }
-                _ => {}
-            }
-        }
-    };
-
-    // restore terminal (cursor will be shown by CursorGuard)
-    disable_raw_mode().context("failed to disable raw mode")?;
-
-    // clear and show result
-    execute!(
-        stdout(),
-        terminal::Clear(terminal::ClearType::All),
-        cursor::MoveTo(0, 0)
-    )?;
-
-    match &result {
-        Ok(selected) => {
-            // format selected model name nicely
-            let formatted_selected = if let Some(slash_pos) = selected.find('/') {
-                let (provider, model) = selected.split_at(slash_pos);
-                let model = &model[1..]; // skip the slash
-                format!(
-                    "{}{}{}",
-                    style(provider).cyan(),
-                    style("/").dim(),
-                    style(model).white().bold()
-                )
-            } else {
-                style(selected).white().bold().to_string()
-            };
-
-            println!(
-                "{} {}",
-                style("✅ selected:").green().bold(),
-                formatted_selected
-            );
-        }
-        Err(_) => {
-            println!("{} {}", style("❌").red(), style("cancelled").dim());
-        }
-    }
-
-    result
-}
-
-/// calculate sliding window bounds to keep current selection visible
-fn calculate_sliding_window(
-    current_selection: usize,
-    total_items: usize,
-    window_size: usize,
-) -> (usize, usize) {
-    if total_items <= window_size {
-        // if we have fewer items than window size, show all
-        return (0, total_items);
-    }
-
-    // try to centre the current selection in the window
-    let half_window = window_size / 2;
-
-    let start = if current_selection < half_window {
-        // near the beginning, start from 0
-        0
-    } else if current_selection + half_window >= total_items {
-        // near the end, end at total_items
-        total_items - window_size
-    } else {
-        // in the middle, centre around current selection
-        current_selection - half_window
-    };
-
-    let end = std::cmp::min(start + window_size, total_items);
-
-    (start, end)
-}
-
-/// intelligent filtering algorithm with fuzzy matching and ranking
-fn intelligent_filter(models: &[String], query: &str) -> Vec<String> {
-    if query.trim().is_empty() {
-        return models.to_vec();
-    }
-
-    let query_lower = query.to_lowercase();
-    let query_parts: Vec<&str> = query_lower.split_whitespace().collect();
-
-    let mut scored_models: Vec<(String, i32)> = models
-        .iter()
-        .filter_map(|model| {
-            let model_lower = model.to_lowercase();
-            let score = calculate_match_score(&model_lower, &query_lower, &query_parts);
-            if score > 0 {
-                Some((model.clone(), score))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // sort by score (highest first)
-    scored_models.sort_by(|a, b| b.1.cmp(&a.1));
-
-    // return just the model names
-    scored_models.into_iter().map(|(model, _)| model).collect()
-}
-
-/// calculate match score for intelligent ranking
-fn calculate_match_score(model: &str, query: &str, query_parts: &[&str]) -> i32 {
-    let mut score = 0;
-
-    // exact match gets highest score
-    if model == query {
-        return 1000;
-    }
-
-    // starts with query gets high score
-    if model.starts_with(query) {
-        score += 500;
-    }
-
-    // contains exact query gets good score
-    if model.contains(query) {
-        score += 300;
-    }
-
-    // check individual parts
-    for part in query_parts {
-        if part.len() >= 2 {
-            // ignore very short parts
-            if model.contains(part) {
-                score += 100;
-
-                // bonus for matching provider names
-                if model.starts_with(part) {
-                    score += 50;
-                }
-
-                // bonus for matching after slash (model name part)
-                if let Some(slash_pos) = model.find('/') {
-                    let after_slash = &model[slash_pos + 1..];
-                    if after_slash.contains(part) {
-                        score += 75;
-                    }
-                }
-            }
-        }
-    }
-
-    // fuzzy matching bonus for partial character matches
-    let fuzzy_score = calculate_fuzzy_score(model, query);
-    score += fuzzy_score;
-
-    // penalty for very long model names (prefer shorter, cleaner names)
-    if model.len() > 50 {
-        score -= 10;
-    }
-
-    score
-}
-
-/// calculate fuzzy matching score
-fn calculate_fuzzy_score(text: &str, pattern: &str) -> i32 {
-    let text_chars: Vec<char> = text.chars().collect();
-    let pattern_chars: Vec<char> = pattern.chars().collect();
-
-    let mut score = 0;
-    let mut text_idx = 0;
-
-    for &pattern_char in &pattern_chars {
-        while text_idx < text_chars.len() {
-            if text_chars[text_idx]
-                .to_lowercase()
-                .eq(pattern_char.to_lowercase())
-            {
-                score += 10;
-                text_idx += 1;
-                break;
-            }
-            text_idx += 1;
-        }
-    }
-
-    score
-}
-
-/// load configuration from config file or create default if not found
 pub fn load_config() -> Result<Config> {
     let config_path = get_config_path()?;
 
@@ -1564,16 +646,74 @@ fn get_models_cache_path() -> Result<std::path::PathBuf> {
     Ok(config_dir.join("commit-wizard").join("models_cache.json"))
 }
 
+#[derive(Serialize)]
+struct HeadlessRunOutput {
+    mode: &'static str,
+    commit_message: String,
+    commit_succeeded: bool,
+    selected_model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope_confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    overall_confidence: Option<f32>,
+}
+
+#[derive(Serialize)]
+struct HeadlessTestOutput {
+    mode: &'static str,
+    status: String,
+    repo_path: String,
+    staged_files: usize,
+    files_processed: usize,
+    added_lines: usize,
+    removed_lines: usize,
+    complexity_score: f32,
+    requires_body: bool,
+    commit_type_hint: String,
+    scope_hint: Option<String>,
+    scope_candidates: Vec<String>,
+    forced_type: Option<String>,
+    patterns_detected: usize,
+    ai_generated: bool,
+    commit_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope_confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    overall_confidence: Option<f32>,
+}
+
+fn print_headless_json<T: Serialize>(value: &T) -> Result<()> {
+    let json = serde_json::to_string(value).context("failed to serialise headless output")?;
+    println!("{json}");
+    Ok(())
+}
+
 /// test git diff processing without user interaction (for automated testing)
-async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> {
+pub async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> {
     use git2::Repository;
 
-    println!(
-        "{}",
-        style("🔍 testing git diff processing...").cyan().bold()
-    );
-
+    let is_headless = args.headless || args.headless_json;
     let repo_path = args.path.as_deref().unwrap_or(".");
+
+    let mut status = "ok".to_string();
+    let mut ai_generated = false;
+    let mut commit_message: Option<String> = None;
+    // audit fields from classifier (only populated when use_classifier=true)
+    let mut scope_reason: Option<String> = None;
+    let mut scope_confidence: Option<f32> = None;
+    let mut overall_confidence: Option<f32> = None;
+
+    if !is_headless {
+        println!(
+            "{}",
+            style("🔍 testing git diff processing...").cyan().bold()
+        );
+    }
+
     let _repo = match Repository::open(repo_path) {
         Ok(repo) => repo,
         Err(e) => {
@@ -1585,61 +725,91 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         }
     };
 
-    // get staged files first
     let staged_files = crate::git::get_staged_files(repo_path)?;
-    println!("📄 staged files found: {}", staged_files.len());
-    for (i, file) in staged_files.iter().enumerate() {
-        println!("  {}. {}", i + 1, file);
+    let staged_files_count = staged_files.len();
+
+    if !is_headless {
+        println!("📄 staged files found: {}", staged_files.len());
+        for (i, file) in staged_files.iter().enumerate() {
+            println!("  {}. {}", i + 1, file);
+        }
     }
 
     if staged_files.is_empty() {
-        println!(
-            "{}",
-            style("⚠️  no staged files found. add files with 'git add' first.").yellow()
-        );
+        status = "no_staged_files".to_string();
+        if !is_headless {
+            println!(
+                "{}",
+                style("⚠️  no staged files found. add files with 'git add' first.").yellow()
+            );
+        }
+
+        if args.headless_json {
+            let output = HeadlessTestOutput {
+                mode: "test-diff",
+                status: status.clone(),
+                repo_path: repo_path.to_string(),
+                staged_files: 0,
+                files_processed: 0,
+                added_lines: 0,
+                removed_lines: 0,
+                complexity_score: 0.0,
+                requires_body: false,
+                commit_type_hint: String::new(),
+                scope_hint: None,
+                scope_candidates: Vec::new(),
+                forced_type: None,
+                patterns_detected: 0,
+                ai_generated: false,
+                commit_message: None,
+                scope_reason: None,
+                scope_confidence: None,
+                overall_confidence: None,
+            };
+            print_headless_json(&output)?;
+        }
+
         return Ok(("test completed - no staged files".to_string(), false));
     }
 
-    // test diff analysis
-    println!("\n{}", style("🔬 analysing diffs...").cyan());
+    if !is_headless {
+        println!("\n{}", style("🔬 analysing diffs...").cyan());
+    }
     let diff_info = match crate::git::get_diff_info(
         repo_path,
         args.max_size * 1024,
         args.max_files,
-        args.verbose,
+        args.verbose && !is_headless,
     ) {
         Ok(info) => info,
         Err(e) => {
-            println!(
-                "{}",
-                style(&format!("❌ git diff analysis failed: {e}"))
-                    .red()
-                    .bold()
-            );
+            if !is_headless {
+                println!(
+                    "{}",
+                    style(&format!("❌ git diff analysis failed: {e}"))
+                        .red()
+                        .bold()
+                );
+            }
             return Err(e);
         }
     };
 
-    println!(
-        "{}",
-        style("✅ git diff processing successful!").green().bold()
-    );
-    println!("📊 analysis results:");
-    println!("  └─ files processed: {}", diff_info.files.len());
-    println!(
-        "  └─ total added lines: {}",
-        diff_info.files.iter().map(|f| f.added_lines).sum::<usize>()
-    );
-    println!(
-        "  └─ total removed lines: {}",
-        diff_info
-            .files
-            .iter()
-            .map(|f| f.removed_lines)
-            .sum::<usize>()
-    );
+    let added_lines: usize = diff_info.files.iter().map(|f| f.added_lines).sum();
+    let removed_lines: usize = diff_info.files.iter().map(|f| f.removed_lines).sum();
 
-    if args.verbose {
+    if !is_headless {
+        println!(
+            "{}",
+            style("✅ git diff processing successful!").green().bold()
+        );
+        println!("📊 analysis results:");
+        println!("  └─ files processed: {}", diff_info.files.len());
+        println!("  └─ total added lines: {added_lines}");
+        println!("  └─ total removed lines: {removed_lines}");
+    }
+
+    if args.verbose && !is_headless {
         println!("\n{}", style("📝 detailed file analysis:").cyan());
         for (i, file) in diff_info.files.iter().enumerate() {
             println!(
@@ -1658,145 +828,187 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         }
     }
 
-    // test commit intelligence analysis
-    println!(
-        "\n{}",
-        style("🧠 testing commit intelligence analysis...").cyan()
-    );
     let intelligence = crate::ai::analyse_commit_intelligence(&diff_info);
-    println!("✅ intelligence analysis successful!");
-    println!("📈 intelligence results:");
-    println!(
-        "  └─ complexity score: {:.1}/5.0",
-        intelligence.complexity_score
-    );
-    println!("  └─ suggested type: {}", intelligence.commit_type_hint);
-    if let Some(scope) = &intelligence.scope_hint {
-        println!("  └─ suggested scope: {scope}");
-    }
-    println!("  └─ requires body: {}", intelligence.requires_body);
-    println!(
-        "  └─ patterns detected: {}",
-        intelligence.detected_patterns.len()
-    );
 
-    if args.verbose && !intelligence.detected_patterns.is_empty() {
-        println!("  └─ pattern details:");
-        for pattern in &intelligence.detected_patterns {
-            println!(
-                "     • {} (impact: {:.1})",
-                pattern.description, pattern.impact
-            );
+    if !is_headless {
+        println!(
+            "\n{}",
+            style("🧠 testing commit intelligence analysis...").cyan()
+        );
+        println!("✅ intelligence analysis successful!");
+        println!("📈 intelligence results:");
+        println!(
+            "  └─ complexity score: {:.1}/5.0",
+            intelligence.complexity_score
+        );
+        println!("  └─ suggested type: {}", intelligence.commit_type_hint);
+        if let Some(scope) = &intelligence.scope_hint {
+            println!("  └─ suggested scope: {scope}");
+        }
+        println!("  └─ requires body: {}", intelligence.requires_body);
+        println!(
+            "  └─ patterns detected: {}",
+            intelligence.detected_patterns.len()
+        );
+
+        if args.verbose && !intelligence.detected_patterns.is_empty() {
+            println!("  └─ pattern details:");
+            for pattern in &intelligence.detected_patterns {
+                println!(
+                    "     • {} (impact: {:.1})",
+                    pattern.description, pattern.impact
+                );
+            }
         }
     }
 
-    // test AI commit message generation
-    println!(
-        "\n{}",
-        style("🤖 testing ai commit message generation...").cyan()
-    );
-
-    // load config for AI generation
     let config = match load_config() {
         Ok(config) => config,
         Err(e) => {
-            println!(
-                "{}",
-                style(&format!("⚠️  failed to load config: {e}")).yellow()
-            );
-            // create a default config for testing
+            if !is_headless {
+                println!(
+                    "{}",
+                    style(&format!("⚠️  failed to load config: {e}")).yellow()
+                );
+            }
             Config::default()
         }
     };
 
-    // load .env file for testing
-    dotenv().ok();
-
-    // check for API key
-    let api_key = std::env::var("OPENROUTER_API_KEY").ok();
-    if api_key.is_none() || api_key.as_ref().unwrap().trim().is_empty() {
-        println!(
-            "{}",
-            style("⚠️  openrouter_api_key not set, skipping ai generation test").yellow()
-        );
-        println!(
-            "{}",
-            style("💡 set openrouter_api_key environment variable to test ai generation").dim()
-        );
-
-        println!(
-            "\n{}",
-            style("🎉 all tests passed! git diff processing is working correctly.")
-                .green()
-                .bold()
-        );
-        return Ok((
-            "test completed successfully - no AI generation (no API key)".to_string(),
-            false,
-        ));
-    }
-
-    // generate commit message using AI (optional hard-fail via --ai-smoke)
-    let commit_message = match crate::ai::generate_conventional_commit_with_model(
+    let scope_aliases = args.effective_scope_aliases(&config);
+    let scope_candidates = crate::analysis::derive_scope_candidates_with_options(
         &diff_info,
-        args.debug,
-        args.smart_model,
-        None, // use default model
-        &config,
-    )
-    .await
-    {
-        Ok(message) => {
-            println!("✅ ai commit message generation successful!");
-            message
+        crate::analysis::ScopeCandidateOptions {
+            allow_aliases: scope_aliases,
+        },
+    );
+    let forced_type = crate::analysis::determine_forced_commit_type(&diff_info);
+
+    dotenv().ok();
+    let api_key = std::env::var("OPENROUTER_API_KEY").ok();
+    let has_api_key = api_key
+        .as_ref()
+        .map(|key| !key.trim().is_empty())
+        .unwrap_or(false);
+
+    if !has_api_key {
+        status = "ai_skipped".to_string();
+        if !is_headless {
+            println!(
+                "{}",
+                style("⚠️  openrouter_api_key not set, skipping ai generation test").yellow()
+            );
+            println!(
+                "{}",
+                style("💡 set openrouter_api_key environment variable to test ai generation").dim()
+            );
         }
-        Err(e) => {
-            if args.ai_smoke {
-                return Err(e.context(
-                    "ai smoke test failed (set OPENROUTER_API_KEY or disable --ai-smoke)",
-                ));
-            }
-            println!("{}", style(&format!("❌ ai generation failed: {e}")).red());
+    } else {
+        if !is_headless {
             println!(
                 "\n{}",
-                style("🎉 core tests passed! git diff processing is working correctly.")
-                    .green()
-                    .bold()
+                style("🤖 testing ai commit message generation...").cyan()
             );
-            return Ok((
-                "test completed successfully - AI generation failed".to_string(),
-                false,
-            ));
         }
-    };
+        let min_confidence = args.effective_min_confidence(&config);
+        let min_scope_confidence = args.effective_min_scope_confidence(&config);
+        let scope_strategy = args.effective_scope_strategy(&config);
+        let scope_aliases = args.effective_scope_aliases(&config);
+        let ai_control = args.effective_ai_control(&config);
 
-    // display generated commit message
-    println!("\n{}", style("📝 generated commit message:").green().bold());
-    println!("{}", style("─".repeat(50)).dim());
-    println!("{}", style(&commit_message).yellow());
-    println!("{}", style("─".repeat(50)).dim());
+        let generated = match crate::ai::generate_conventional_commit_with_model(
+            &diff_info,
+            args.debug,
+            args.smart_model,
+            None, // use default model
+            &config,
+            is_headless,
+            args.use_classifier,
+            min_confidence,
+            min_scope_confidence,
+            scope_strategy,
+            scope_aliases,
+            ai_control,
+        )
+        .await
+        {
+            Ok(result) => {
+                if !is_headless {
+                    println!("✅ ai commit message generation successful!");
+                }
+                ai_generated = true;
+                // capture audit fields
+                scope_reason = result.scope_reason;
+                scope_confidence = result.scope_confidence;
+                overall_confidence = result.overall_confidence;
+                result.message
+            }
+            Err(e) => {
+                if args.ai_smoke {
+                    return Err(e.context(
+                        "ai smoke test failed (set OPENROUTER_API_KEY or disable --ai-smoke)",
+                    ));
+                }
+                status = "ai_failed".to_string();
+                if !is_headless {
+                    println!("{}", style(&format!("❌ ai generation failed: {e}")).red());
+                }
+                String::new()
+            }
+        };
 
-    // validate the generated message
-    if let Err(e) = crate::ai::validate_commit_message(&commit_message) {
-        println!(
-            "{}",
-            style(&format!("⚠️  generated message validation warning: {e}")).yellow()
-        );
-    } else {
-        println!(
-            "{}",
-            style("✅ generated message passes validation").green()
-        );
+        if !generated.is_empty() {
+            commit_message = Some(generated);
+        }
     }
 
-    // optionally commit the generated message
+    if let Some(message) = commit_message.as_ref() {
+        if !is_headless {
+            println!("\n{}", style("📝 generated commit message:").green().bold());
+            println!("{}", style("─".repeat(50)).dim());
+            println!("{}", style(message).yellow());
+            println!("{}", style("─".repeat(50)).dim());
+        }
+
+        if let Err(e) = crate::ai::validate_commit_message(message) {
+            if !is_headless {
+                println!(
+                    "{}",
+                    style(&format!("⚠️  generated message validation warning: {e}")).yellow()
+                );
+            }
+        } else if !is_headless {
+            println!(
+                "{}",
+                style("✅ generated message passes validation").green()
+            );
+        }
+    }
+
     let commit_successful = if args.auto_commit {
-        println!(
-            "\n{}",
-            style("🚀 auto-committing generated message...")
-                .cyan()
-                .bold()
-        );
+        let message = match commit_message.clone() {
+            Some(message) => message,
+            None => {
+                if !is_headless {
+                    println!(
+                        "{}",
+                        style("⚠️  no commit message available to auto-commit").yellow()
+                    );
+                }
+                return Err(anyhow::anyhow!(
+                    "cannot auto-commit without a generated commit message"
+                ));
+            }
+        };
+
+        if !is_headless {
+            println!(
+                "\n{}",
+                style("🚀 auto-committing generated message...")
+                    .cyan()
+                    .bold()
+            );
+        }
 
         let repo_dir_path = if repo_path == "." {
             std::env::current_dir().context("Failed to get current directory")?
@@ -1806,23 +1018,27 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
 
         let output = std::process::Command::new("git")
             .current_dir(repo_dir_path)
-            .args(["commit", "-m", &commit_message])
+            .args(["commit", "-m", &message])
             .output()
             .context("Failed to execute git commit command")?;
 
         if output.status.success() {
-            println!("{}", style("✅ commit successful!").green().bold());
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                if !stdout.trim().is_empty() {
-                    println!("{stdout}");
+            if !is_headless {
+                println!("{}", style("✅ commit successful!").green().bold());
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    if !stdout.trim().is_empty() {
+                        println!("{stdout}");
+                    }
                 }
             }
             true
         } else {
-            println!("{}", style("❌ commit failed:").red().bold());
-            if let Ok(stderr) = String::from_utf8(output.stderr) {
-                if !stderr.trim().is_empty() {
-                    println!("{stderr}");
+            if !is_headless {
+                println!("{}", style("❌ commit failed:").red().bold());
+                if let Ok(stderr) = String::from_utf8(output.stderr) {
+                    if !stderr.trim().is_empty() {
+                        println!("{stderr}");
+                    }
                 }
             }
             false
@@ -1831,12 +1047,303 @@ async fn test_git_diff_processing(args: &CoreCliArgs) -> Result<(String, bool)> 
         false
     };
 
-    println!(
-        "\n{}",
-        style("🎉 all tests passed! git diff processing and ai generation working correctly.")
-            .green()
-            .bold()
-    );
+    if !is_headless {
+        println!(
+            "\n{}",
+            style("🎉 all tests passed! git diff processing and ai generation working correctly.")
+                .green()
+                .bold()
+        );
+    }
 
-    Ok((commit_message, commit_successful))
+    if args.headless_json {
+        let output = HeadlessTestOutput {
+            mode: "test-diff",
+            status: status.clone(),
+            repo_path: repo_path.to_string(),
+            staged_files: staged_files_count,
+            files_processed: diff_info.files.len(),
+            added_lines,
+            removed_lines,
+            complexity_score: intelligence.complexity_score,
+            requires_body: intelligence.requires_body,
+            commit_type_hint: intelligence.commit_type_hint.clone(),
+            scope_hint: intelligence.scope_hint.clone(),
+            scope_candidates,
+            forced_type,
+            patterns_detected: intelligence.detected_patterns.len(),
+            ai_generated,
+            commit_message: commit_message.clone(),
+            scope_reason,
+            scope_confidence,
+            overall_confidence,
+        };
+        print_headless_json(&output)?;
+    } else if is_headless {
+        if let Some(message) = commit_message.as_ref() {
+            println!("{message}");
+        }
+    }
+
+    let final_message = commit_message.unwrap_or_else(|| {
+        format!(
+            "test completed successfully - {}",
+            if status.is_empty() { "ok" } else { status.as_str() }
+        )
+    });
+
+    Ok((final_message, commit_successful))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::ffi::OsString;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &PathBuf) -> Self {
+            let previous = env::var_os(key);
+            env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.take() {
+                env::set_var(self.key, value);
+            } else {
+                env::remove_var(self.key);
+            }
+        }
+    }
+
+    struct TempConfigDir {
+        path: PathBuf,
+        _env_guard: EnvVarGuard,
+        _lock_guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl TempConfigDir {
+        fn initialise() -> Self {
+            let lock = ENV_MUTEX
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .expect("env mutex poisoned");
+            let unique = format!(
+                "commit-wizard-test-{}-{}",
+                process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time drift")
+                    .as_nanos()
+            );
+            let path = env::temp_dir().join(unique);
+            fs::create_dir_all(&path).expect("failed to create temp dir");
+            let env_guard = EnvVarGuard::set("XDG_CONFIG_HOME", &path);
+            Self {
+                path,
+                _env_guard: env_guard,
+                _lock_guard: lock,
+            }
+        }
+    }
+
+    impl Drop for TempConfigDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn config_loads_with_missing_ai_knobs() {
+        // simulate old config format without new AI fields
+        let old_config_toml = r#"
+            auto_select = false
+
+            [models]
+            fast = "model-a"
+            thinking = "model-b"
+            default = "model-c"
+            available = []
+        "#;
+
+        let config: Config = toml::from_str(old_config_toml).expect("should parse old config");
+
+        // verify serde defaults are applied
+        assert_eq!(config.ai_control, AiControl::High);
+        assert_eq!(config.scope_strategy, ScopeStrategy::Free);
+        assert!(config.scope_aliases);
+        assert!(config.min_scope_confidence.is_none());
+        assert!(config.min_confidence.is_none());
+    }
+
+    #[test]
+    fn config_preserves_explicit_ai_knobs() {
+        let config_toml = r#"
+            auto_select = true
+            ai_control = "balanced"
+            scope_strategy = "conservative"
+            scope_aliases = true
+            min_scope_confidence = 0.5
+            min_confidence = 0.7
+
+            [models]
+            fast = "model-a"
+            thinking = "model-b"
+            default = "model-c"
+            available = []
+        "#;
+
+        let config: Config = toml::from_str(config_toml).expect("should parse config with AI knobs");
+
+        assert_eq!(config.ai_control, AiControl::Balanced);
+        assert_eq!(config.scope_strategy, ScopeStrategy::Conservative);
+        assert!(config.scope_aliases);
+        assert_eq!(config.min_scope_confidence, Some(0.5));
+        assert_eq!(config.min_confidence, Some(0.7));
+    }
+
+    #[test]
+    fn headless_test_output_includes_audit_fields() {
+        let output = HeadlessTestOutput {
+            mode: "test-diff",
+            status: "ok".to_string(),
+            repo_path: ".".to_string(),
+            staged_files: 1,
+            files_processed: 1,
+            added_lines: 10,
+            removed_lines: 5,
+            complexity_score: 2.0,
+            requires_body: false,
+            commit_type_hint: "feat".to_string(),
+            scope_hint: Some("core".to_string()),
+            scope_candidates: vec!["core".to_string()],
+            forced_type: None,
+            patterns_detected: 0,
+            ai_generated: true,
+            commit_message: Some("feat(core): add feature".to_string()),
+            scope_reason: Some("primary directory".to_string()),
+            scope_confidence: Some(0.9),
+            overall_confidence: Some(0.85),
+        };
+
+        let json = serde_json::to_string(&output).expect("should serialize");
+
+        // verify audit fields are present
+        assert!(json.contains("\"scope_reason\":\"primary directory\""));
+        assert!(json.contains("\"scope_confidence\":0.9"));
+        assert!(json.contains("\"overall_confidence\":0.85"));
+    }
+
+    #[test]
+    fn headless_test_output_omits_none_audit_fields() {
+        let output = HeadlessTestOutput {
+            mode: "test-diff",
+            status: "ok".to_string(),
+            repo_path: ".".to_string(),
+            staged_files: 1,
+            files_processed: 1,
+            added_lines: 10,
+            removed_lines: 5,
+            complexity_score: 2.0,
+            requires_body: false,
+            commit_type_hint: "feat".to_string(),
+            scope_hint: None,
+            scope_candidates: vec![],
+            forced_type: None,
+            patterns_detected: 0,
+            ai_generated: false,
+            commit_message: None,
+            scope_reason: None,
+            scope_confidence: None,
+            overall_confidence: None,
+        };
+
+        let json = serde_json::to_string(&output).expect("should serialize");
+
+        // verify None fields are omitted (skip_serializing_if)
+        assert!(!json.contains("scope_reason"));
+        assert!(!json.contains("scope_confidence"));
+        assert!(!json.contains("overall_confidence"));
+    }
+
+    #[test]
+    fn cli_effective_defaults_respect_config() {
+        let temp_dir = TempConfigDir::initialise();
+        let config_dir = temp_dir.path.join("commit-wizard");
+        fs::create_dir_all(&config_dir).expect("failed to create config dir");
+        let config_path = config_dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+auto_select = true
+ai_control = "balanced"
+scope_strategy = "conservative"
+scope_aliases = true
+min_scope_confidence = 0.5
+min_confidence = 0.7
+
+[models]
+fast = "model-a"
+thinking = "model-b"
+default = "model-c"
+available = []
+"#,
+        )
+        .expect("failed to write config");
+
+        let config = load_config().expect("should load config");
+        let args = CoreCliArgs::try_parse_from(["commit-wizard", "--use-classifier"])
+            .expect("should parse args");
+
+        assert_eq!(args.effective_ai_control(&config), AiControl::Balanced);
+        assert_eq!(
+            args.effective_scope_strategy(&config),
+            ScopeStrategy::Conservative
+        );
+        assert!(args.effective_scope_aliases(&config));
+        assert_eq!(args.effective_min_confidence(&config), Some(0.7));
+        assert_eq!(args.effective_min_scope_confidence(&config), Some(0.5));
+
+        let args_override = CoreCliArgs::try_parse_from([
+            "commit-wizard",
+            "--use-classifier",
+            "--ai-control",
+            "strict",
+            "--scope-strategy",
+            "free",
+            "--scope-aliases=false",
+            "--min-confidence",
+            "0.9",
+            "--min-scope-confidence",
+            "0.2",
+        ])
+        .expect("should parse override args");
+
+        assert_eq!(args_override.effective_ai_control(&config), AiControl::Strict);
+        assert_eq!(
+            args_override.effective_scope_strategy(&config),
+            ScopeStrategy::Free
+        );
+        assert!(!args_override.effective_scope_aliases(&config));
+        assert_eq!(args_override.effective_min_confidence(&config), Some(0.9));
+        assert_eq!(
+            args_override.effective_min_scope_confidence(&config),
+            Some(0.2)
+        );
+    }
 }

@@ -197,5 +197,5 @@ Cargo.lock
 yarn.lock
 __test__
 renovate.json
-index.js
-index.d.ts
+npm/*/commit-wizard
+npm/*/commit-wizard.exe

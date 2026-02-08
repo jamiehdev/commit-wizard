@@ -1,0 +1,43 @@
+[scopes]
+omit_scope_if_single = false
+omit_scope_if_ambiguous = true
+
+[[scopes.rules]]
+match = ".github/workflows/**"
+scope = "ci"
+
+[[scopes.rules]]
+match = "commit-wizard-cli/**"
+scope = "cli"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/ai/validation.rs"
+scope = "validation"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/ai/prompts.rs"
+scope = "prompt"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/git.rs"
+scope = "git"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/analysis/**"
+scope = "diff"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/bin/release_tool.rs"
+scope = "release"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/ai/**"
+scope = "ai"
+
+[[scopes.rules]]
+match = "commit-wizard-core/src/**"
+scope = "engine"
+
+[[scopes.rules]]
+match = "commit-wizard-npm/**"
+scope = "npm"

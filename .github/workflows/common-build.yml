@@ -38,13 +38,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: setup node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: commit-wizard-napi/package-lock.json
-
       - name: install rust
         id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -97,7 +90,7 @@ jobs:
 
       - name: run coverage
         if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest'
-        run: cargo tarpaulin --all-features --workspace --exclude commit-wizard-napi --out Html --out Json
+        run: cargo tarpaulin --all-features --workspace --out Html --out Json
 
       - name: upload coverage report
         if: inputs.run_coverage && matrix.settings.host == 'ubuntu-latest'
@@ -134,16 +127,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Full HTML report available in artifacts." >> $GITHUB_STEP_SUMMARY
       
-      - name: build napi module
-        shell: bash
-        run: |
-          cd commit-wizard-napi
-          npm install
-          npm run build
-          npm test
-          ls -la
-          find . -name "*.node" -type f
-      
       - name: build rust cli binary
         shell: bash
         run: |
@@ -155,14 +138,6 @@ jobs:
           else
             cp target/${{ matrix.settings.target }}/release/commit-wizard commit-wizard-${{ matrix.settings.target }}
           fi
-      
-      - name: upload napi artifacts
-        if: inputs.upload_artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: bindings-${{ matrix.settings.platform }}
-          path: commit-wizard-napi/*.node
-          if-no-files-found: error
       
       - name: upload rust binary artifacts
         if: inputs.upload_artifacts

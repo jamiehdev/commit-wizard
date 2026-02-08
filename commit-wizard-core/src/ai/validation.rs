@@ -185,7 +185,7 @@ fn is_likely_commit_message(line: &str) -> bool {
 
 /// normalize scope by removing spaces after commas
 fn normalize_scope(scope: &str) -> String {
-    // remove spaces after commas: "ai, napi, core" -> "ai,napi,core"
+    // remove spaces after commas: "ai, core, cli" -> "ai,core,cli"
     scope
         .split(',')
         .map(|s| s.trim())
@@ -264,7 +264,7 @@ pub fn fix_commit_format(msg: &str) -> Result<String> {
         Ok(()) => Ok(normalized),
         Err(e) => {
             // if it's still invalid, try one more fix for the specific error
-            if e.to_string().contains("invalid scope") && e.to_string().contains("ai, napi") {
+            if e.to_string().contains("invalid scope") && e.to_string().contains("ai, core") {
                 // this is our specific case - scope has spaces after commas
                 let fixed = normalize_commit_format(msg);
                 Ok(fixed)

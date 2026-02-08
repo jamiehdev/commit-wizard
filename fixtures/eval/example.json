@@ -1,0 +1,14 @@
+{
+  "id": "scope-candidates-core",
+  "description": "derive scope candidates for core changes",
+  "files": [
+    {
+      "path": "commit-wizard-core/src/analysis/scope_candidates.rs",
+      "diff": "+pub fn derive_scope_candidates(diff_info: &DiffInfo) -> Vec<String> {\n+    // example diff for evaluation\n+    Vec::new()\n+}\n"
+    }
+  ],
+  "expected": {
+    "type": "feat",
+    "scope": "diff"
+  }
+}
