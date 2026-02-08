@@ -247,6 +247,28 @@ default = "mistralai/devstral-2512:free"
 
 edit this file directly to change your defaults. cli flags override config values.
 
+### repository scope rules
+
+to make scopes deterministic, add a `commit-wizard.config.toml` at your repo root. rules are evaluated top-to-bottom; the first match wins.
+
+```toml
+[scopes]
+omit_scope_if_single = false
+omit_scope_if_ambiguous = true
+
+[[scopes.rules]]
+match = "src/validation/**"
+scope = "validation"
+
+[[scopes.rules]]
+match = "src/git/**"
+scope = "git"
+
+[[scopes.rules]]
+match = "src/**"
+scope = "engine"
+```
+
 ---
 
 ## conventional commits compliance
