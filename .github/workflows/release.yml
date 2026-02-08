@@ -53,20 +53,20 @@ jobs:
           node-version: 20
           registry-url: 'https://registry.npmjs.org/'
           cache: npm
-          cache-dependency-path: commit-wizard-napi/package-lock.json
+          cache-dependency-path: commit-wizard-npm/package-lock.json
       - name: download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
       - name: prepare npm binary packages
         run: |
-          cd commit-wizard-napi
+          cd commit-wizard-npm
           CW_ARTIFACTS_DIR=../artifacts node ./scripts/prepare-host-for-prepublish.mjs
       - name: publish platform packages to npm
         run: |
           set -euo pipefail
           for platform in linux-x64-gnu darwin-x64 darwin-arm64 win32-x64-msvc; do
-            cd commit-wizard-napi/npm/$platform
+            cd commit-wizard-npm/npm/$platform
             npm publish --access public
             cd - >/dev/null
           done
@@ -74,7 +74,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: publish root package to npm
         run: |
-          cd commit-wizard-napi
+          cd commit-wizard-npm
           if [[ "${{ github.repository }}" == "jamiehdev/commit-wizard" && "${{ github.ref_type }}" == "tag" && "${{ github.event_name }}" == "push" ]]; then
             npm publish --access public
             echo "✅ published to npm"

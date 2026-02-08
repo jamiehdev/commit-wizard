@@ -53,7 +53,7 @@ jobs:
       - name: run wrapper with local binary
         env:
           COMMIT_WIZARD_BINARY: target/debug/commit-wizard
-        run: node commit-wizard-napi/bin.js --help
+        run: node commit-wizard-npm/bin.js --help
 
   cli-e2e:
     name: cli e2e (test-diff)
