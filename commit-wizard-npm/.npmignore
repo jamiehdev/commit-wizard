@@ -1,0 +1,15 @@
+target
+Cargo.lock
+.cargo
+.github
+.eslintrc
+.prettierignore
+rustfmt.toml
+yarn.lock
+# Don't exclude .node files anymore as we need them for publishing
+# *.node
+.npm/
+npm/
+.yarn
+__test__
+renovate.json
