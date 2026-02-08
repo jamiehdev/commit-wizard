@@ -130,7 +130,7 @@ impl Default for Config {
     }
 }
 
-// argument parsing struct - this can be shared by CLI and NAPI (if NAPI parses from Vec<String>)
+// argument parsing struct - this can be shared by CLI and npm wrapper (if it parses from Vec<String>)
 #[derive(Parser, Debug, Clone)] // added Clone
 #[command(name = "commit-wizard-core")] // generic name for the core functionality
 pub struct CoreCliArgs {

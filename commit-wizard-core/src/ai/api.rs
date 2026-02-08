@@ -21,8 +21,8 @@ use super::validation::{
     extract_commit_message, fix_commit_format, post_process_commit_message, validate_commit_message,
 };
 use crate::analysis::{
-    derive_scope_candidates_with_options, determine_forced_commit_type, AiControl,
-    ScopeCandidateOptions, ScopeStrategy,
+    analyse_guardrails, calculate_scope_coverage_with_rules, derive_scope_candidates_with_rules,
+    load_scope_rules, AiControl, ScopeCandidateOptions, ScopeStrategy,
 };
 
 // openrouter api structures
@@ -158,6 +158,9 @@ pub async fn generate_conventional_commit_with_model(
         spinner.set_message(format!("🧙 generating commit message with {model}..."));
     }
 
+    let guardrails = analyse_guardrails(diff_info);
+    let scope_rules = load_scope_rules(&diff_info.repo_root);
+
     let effective_scope_strategy = match ai_control {
         AiControl::High => ScopeStrategy::Free,
         AiControl::Balanced => scope_strategy,
@@ -165,18 +168,14 @@ pub async fn generate_conventional_commit_with_model(
     };
 
     let (scope_candidates, forced_type) = if use_classifier {
-        let candidates = derive_scope_candidates_with_options(
+        let candidates = derive_scope_candidates_with_rules(
             diff_info,
             ScopeCandidateOptions {
                 allow_aliases: scope_aliases,
             },
+            scope_rules.as_ref(),
         );
-        let forced_type = if ai_control == AiControl::High {
-            None
-        } else {
-            determine_forced_commit_type(diff_info)
-        };
-        (candidates, forced_type)
+        (candidates, guardrails.forced_type.clone())
     } else {
         (Vec::new(), None)
     };
@@ -191,6 +190,8 @@ pub async fn generate_conventional_commit_with_model(
             effective_scope_strategy,
             ai_control,
             scope_aliases,
+            &guardrails,
+            scope_rules.as_ref(),
         )
     } else {
         construct_intelligent_prompt(diff_info, &intelligence)
@@ -311,8 +312,9 @@ pub async fn generate_conventional_commit_with_model(
                         classification.commit_type = forced_type.to_string();
                     }
                     if let Some(scope) = classification.scope.as_ref() {
-                        if scope_candidates.contains(scope) {
-                            classification.scope = Some(prefer_short_scope(scope, &scope_candidates));
+                        let preferred_scope = prefer_short_scope(scope, &scope_candidates);
+                        if scope_candidates.contains(&preferred_scope) {
+                            classification.scope = Some(preferred_scope);
                         } else if effective_scope_strategy == ScopeStrategy::Conservative {
                             classification.scope = None;
                             classification.scope_reason = None;
@@ -321,6 +323,29 @@ pub async fn generate_conventional_commit_with_model(
                                 "⚠️  classifier scope '{}' not in suggested candidates",
                                 scope
                             );
+                        }
+                    }
+                    if let Some(scope_rules) = scope_rules.as_ref() {
+                        if scope_rules.omit_scope_if_single()
+                            && scope_candidates.len() <= 1
+                            && classification.scope.is_some()
+                        {
+                            classification.scope = None;
+                            classification.scope_reason = None;
+                        }
+
+                        if let Some(scope) = classification.scope.as_ref() {
+                            if scope_rules.omit_scope_if_ambiguous() {
+                                let coverage = calculate_scope_coverage_with_rules(
+                                    diff_info,
+                                    scope,
+                                    Some(scope_rules),
+                                );
+                                if coverage < 0.7 {
+                                    classification.scope = None;
+                                    classification.scope_reason = None;
+                                }
+                            }
                         }
                     }
                     // capture audit fields before rendering

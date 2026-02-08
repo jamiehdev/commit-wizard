@@ -155,7 +155,7 @@ fn update_versions(ver: &Version) -> Result<()> {
 /// run the version sync script to propagate version from cargo.toml to package.json files
 fn run_version_sync_script() -> Result<()> {
     let output = Command::new("node")
-        .arg("commit-wizard-napi/scripts/sync-version.mjs")
+        .arg("commit-wizard-npm/scripts/sync-version.mjs")
         .output()
         .context("failed to run version sync script")?;
 

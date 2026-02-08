@@ -31,3 +31,4 @@ console = "0.15"
 clap = { version = "4.4", features = ["derive"] } # If core lib parses args or uses the struct 
 regex = "1.10"
 semver = "1.0"
+globset = "0.4"

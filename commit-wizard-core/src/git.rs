@@ -46,6 +46,7 @@ pub enum ChangeHint {
 pub struct DiffInfo {
     pub files: Vec<ModifiedFile>,
     pub summary: String,
+    pub repo_root: String,
 }
 
 /// get diff information from a git repository
@@ -57,6 +58,10 @@ pub fn get_diff_info(
 ) -> Result<DiffInfo> {
     // open the repository
     let repo = Repository::discover(repo_path).context("failed to open git repository")?;
+    let repo_root = repo
+        .workdir()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| repo_path.to_string());
 
     // create diff options
     let mut diff_opts = DiffOptions::new();
@@ -210,7 +215,11 @@ pub fn get_diff_info(
         summary.push('\n');
     }
 
-    Ok(DiffInfo { files, summary })
+    Ok(DiffInfo {
+        files,
+        summary,
+        repo_root,
+    })
 }
 
 /// extract key changes from diff content to provide meaningful context

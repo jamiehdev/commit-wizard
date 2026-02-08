@@ -2,6 +2,7 @@
 
 use super::intelligence::CommitIntelligence;
 use super::patterns::PatternType;
+use crate::analysis::{GuardrailResult, ScopeRuleSet};
 use crate::git::{ChangeHint, DiffInfo, FileType};
 use std::collections::HashMap;
 
@@ -109,7 +110,7 @@ pub fn construct_intelligent_prompt(
     prompt.push_str("  - feat(auth,api): add oauth support\n");
     prompt.push_str("  - refactor: simplify error handling\n");
     prompt.push_str("❌ WRONG formats:\n");
-    prompt.push_str("  - fix(ai, napi): improve validation ← NO SPACES after commas!\n");
+    prompt.push_str("  - fix(ai, core): improve validation ← NO SPACES after commas!\n");
     prompt.push_str("  - Fix(ai): improve validation ← type must be lowercase!\n");
 
     prompt.push_str(&format!(
@@ -256,6 +257,8 @@ pub fn construct_classifier_prompt(
     scope_strategy: crate::analysis::ScopeStrategy,
     ai_control: crate::analysis::AiControl,
     scope_aliases: bool,
+    guardrails: &GuardrailResult,
+    scope_rules: Option<&ScopeRuleSet>,
 ) -> String {
     let mut prompt = String::new();
 
@@ -278,6 +281,12 @@ pub fn construct_classifier_prompt(
     prompt.push_str("rules:\n");
     prompt.push_str("- subject must be <= 72 chars, imperative, lowercase first letter, no trailing period\n");
     prompt.push_str("- use feat only for new user-facing behaviour; avoid feat for text/validation wording changes\n");
+    if guardrails.text_only {
+        prompt.push_str("- text-only changes detected: default type is chore\n");
+    }
+    if guardrails.infra_only {
+        prompt.push_str("- infra/tooling-only changes detected: default type is chore\n");
+    }
     match scope_strategy {
         crate::analysis::ScopeStrategy::Auto => {
             prompt.push_str("- scope is optional; choose null if no single area dominates or a scope would be overly specific\n");
@@ -304,6 +313,25 @@ pub fn construct_classifier_prompt(
     prompt.push_str("- use uk english spelling in subject and bullets\n");
     prompt.push_str("- body_bullets can be empty if change is simple\n");
     prompt.push_str("- confidence and scope_confidence are 0.0 to 1.0\n\n");
+
+    prompt.push_str("preclassification:\n");
+    prompt.push_str(&format!("- docs_only: {}\n", guardrails.docs_only));
+    prompt.push_str(&format!("- text_only: {}\n", guardrails.text_only));
+    prompt.push_str(&format!("- infra_only: {}\n", guardrails.infra_only));
+    if let Some(suggested_type) = guardrails.suggested_type.as_ref() {
+        prompt.push_str(&format!("- suggested_type: {suggested_type}\n"));
+    }
+    if let Some(scope_rules) = scope_rules {
+        prompt.push_str(&format!(
+            "- omit_scope_if_single: {}\n",
+            scope_rules.omit_scope_if_single()
+        ));
+        prompt.push_str(&format!(
+            "- omit_scope_if_ambiguous: {}\n",
+            scope_rules.omit_scope_if_ambiguous()
+        ));
+    }
+    prompt.push('\n');
 
     prompt.push_str(&format!(
         "complexity: {:.1}/5.0; requires body: {}\n",

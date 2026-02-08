@@ -298,7 +298,11 @@ fn build_diff_info(fixture: &EvalFixture) -> Result<DiffInfo> {
         if total_removed == 1 { "" } else { "s" },
     );
 
-    Ok(DiffInfo { files, summary })
+    Ok(DiffInfo {
+        files,
+        summary,
+        repo_root: ".".to_string(),
+    })
 }
 
 fn count_diff_lines(diff: &str) -> (usize, usize) {
