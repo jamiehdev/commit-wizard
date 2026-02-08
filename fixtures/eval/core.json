@@ -10,7 +10,7 @@
     ],
     "expected": {
       "type": "feat",
-      "scope": "commit-wizard-core"
+      "scope": "ai"
     }
   },
   {
@@ -24,7 +24,7 @@
     ],
     "expected": {
       "type": "feat",
-      "scope": "commit-wizard-core"
+      "scope": "diff"
     }
   },
   {
@@ -38,7 +38,7 @@
     ],
     "expected": {
       "type": "feat",
-      "scope": "commit-wizard-cli"
+      "scope": "cli"
     }
   },
   {
@@ -52,7 +52,7 @@
     ],
     "expected": {
       "type": "feat",
-      "scope": "commit-wizard-core"
+      "scope": "engine"
     }
   },
   {

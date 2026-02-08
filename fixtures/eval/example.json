@@ -9,6 +9,6 @@
   ],
   "expected": {
     "type": "feat",
-    "scope": "commit-wizard-core"
+    "scope": "diff"
   }
 }

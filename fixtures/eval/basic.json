@@ -14,7 +14,7 @@
   },
   {
     "id": "ci-workflow",
-    "description": "workflow-only change should force ci",
+    "description": "workflow-only change should force chore",
     "files": [
       {
         "path": ".github/workflows/ci.yml",
@@ -22,12 +22,12 @@
       }
     ],
     "expected": {
-      "type": "ci"
+      "type": "chore"
     }
   },
   {
     "id": "build-cargo",
-    "description": "dependency-only change should force build",
+    "description": "dependency-only change should force chore",
     "files": [
       {
         "path": "Cargo.toml",
@@ -35,7 +35,7 @@
       }
     ],
     "expected": {
-      "type": "build"
+      "type": "chore"
     }
   },
   {
@@ -49,7 +49,7 @@
     ],
     "expected": {
       "type": "feat",
-      "scope": "commit-wizard-core"
+      "scope": "diff"
     }
   },
   {
@@ -63,7 +63,7 @@
     ],
     "expected": {
       "type": "feat",
-      "scope": "commit-wizard-cli"
+      "scope": "cli"
     }
   }
 ]
